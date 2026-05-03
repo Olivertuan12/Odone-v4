@@ -19,9 +19,12 @@ async function testConnection() {
 }
 testConnection();
 
-export const signInWithGoogle = async (scopes: string[] = []) => {
+export const signInWithGoogle = async (scopes: string[] = [], promptAccountSelect: boolean = false) => {
   const provider = new GoogleAuthProvider();
   scopes.forEach(scope => provider.addScope(scope));
+  if (promptAccountSelect) {
+    provider.setCustomParameters({ prompt: 'select_account' });
+  }
   const result = await signInWithPopup(auth, provider);
   const credential = GoogleAuthProvider.credentialFromResult(result);
   return { result, credential };

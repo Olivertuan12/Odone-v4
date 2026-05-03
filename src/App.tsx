@@ -4,26 +4,38 @@ import {
   Settings, Bell, Plus, Video, Image as ImageIcon,
   MessageSquare, MoreHorizontal, LayoutGrid, List,
   PlayCircle, Hash, Clock, ArrowLeft, ChevronRight,
-  Share2, Download,
-  Play, Pause, SkipBack, SkipForward, Volume2, Maximize, X, Calendar, LogOut
+  Share2, Download, Users, Camera,
+  Play, Pause, SkipBack, SkipForward, Volume2, Maximize, X, Calendar, LogOut, Film, HardDrive, MapPin
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './lib/AuthContext';
 import { db, handleFirestoreError, OperationType, signInWithGoogle } from './lib/firebase';
-import { collection, onSnapshot, doc, setDoc, updateDoc, serverTimestamp, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { DriveFolderMapper } from './components/DriveFolderMapper';
+import { ProjectDetail } from './components/ProjectDetail';
+import { googleDriveService } from './services/googleDriveService';
+import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, query, where, orderBy, getDocs, getDoc } from 'firebase/firestore';
 
 export default function App() {
   const { user, loading, signIn, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [activeProject, setActiveProject] = useState<string | null>(null);
-  const [projectPage, setProjectPage] = useState<'detail' | 'feedback'>('detail');
+  const [projectPage, setProjectPage] = useState<'detail' | 'feedback' | 'workspace'>('detail');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [projects, setProjects] = useState<any[]>([]);
 
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectClient, setNewProjectClient] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleDeleteProject = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'projects', id));
+      setActiveProject(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `projects/${id}`);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -157,9 +169,27 @@ export default function App() {
             onClick={() => handleNav('calendar')} 
           />
           <NavItem 
+            icon={<Users className="w-4 h-4" />} 
+            label="Clients" 
+            active={activeTab === 'clients' && !activeProject} 
+            onClick={() => handleNav('clients')} 
+          />
+          <NavItem 
+            icon={<Camera className="w-4 h-4" />} 
+            label="Shooters" 
+            active={activeTab === 'shooters' && !activeProject} 
+            onClick={() => handleNav('shooters')} 
+          />
+          <NavItem 
+            icon={<Film className="w-4 h-4" />} 
+            label="Editors" 
+            active={activeTab === 'editors' && !activeProject} 
+            onClick={() => handleNav('editors')} 
+          />
+          <NavItem 
             icon={<GitCommitHorizontal className="w-4 h-4" />} 
             label="In Review" 
-            badge="3"
+            badge={projects ? projects.filter(p => p.status === 'review').length.toString() : "0"}
             active={activeTab === 'review'} 
             onClick={() => handleNav('review')} 
           />
@@ -207,24 +237,42 @@ export default function App() {
               <motion.div 
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="flex items-center gap-2 text-sm"
+                className="flex items-center gap-4 text-sm w-full"
               >
-                <button 
-                  onClick={() => {
-                    if (projectPage === 'feedback') {
-                      setProjectPage('detail');
-                    } else {
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => {
                       setActiveProject(null);
-                    }
-                  }}
-                  className="text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  {projectPage === 'feedback' ? 'Back to Order' : 'Projects'}
-                </button>
-                <ChevronRight className="w-4 h-4 text-text-muted" />
-                <span className="font-mono text-xs text-text-muted pr-2">{projectDetail?.id ? projectDetail.id.split('-')[1] : 'PRJ'}</span>
-                <span className="font-medium text-text-primary">{projectDetail?.title || 'Loading...'} {projectPage === 'feedback' ? '(Feedback)' : ''}</span>
+                      setProjectPage('detail');
+                    }}
+                    className="w-8 h-8 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-surface-1 rounded transition-colors"
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+                  <span className="font-mono text-xs text-text-muted px-2 border-r border-border-subtle">{projectDetail?.id ? projectDetail.id.split('-')[1] : 'PRJ'}</span>
+                  <span className="font-semibold text-text-primary pl-2">{projectDetail?.title || 'Loading...'}</span>
+                </div>
+                
+                <div className="flex items-center gap-1 bg-surface-1 p-1 rounded-lg border border-border-subtle ml-8">
+                   <button 
+                     onClick={() => setProjectPage('detail')}
+                     className={cn("px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-widest transition-colors", projectPage === 'detail' ? "bg-accent-primary text-white" : "text-text-secondary hover:text-text-primary hover:bg-surface-2")}
+                   >
+                     Order Details
+                   </button>
+                   <button 
+                     onClick={() => setProjectPage('workspace')}
+                     className={cn("px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-widest transition-colors", projectPage === 'workspace' ? "bg-accent-primary text-white" : "text-text-secondary hover:text-text-primary hover:bg-surface-2")}
+                   >
+                     Workspace
+                   </button>
+                   <button 
+                     onClick={() => setProjectPage('feedback')}
+                     className={cn("px-4 py-1.5 rounded-md text-xs font-bold uppercase tracking-widest transition-colors", projectPage === 'feedback' ? "bg-accent-primary text-white" : "text-text-secondary hover:text-text-primary hover:bg-surface-2")}
+                   >
+                     Feedback
+                   </button>
+                </div>
               </motion.div>
             ) : (
                <div className="relative w-64">
@@ -278,6 +326,13 @@ export default function App() {
                      projectDetail={projectDetail} 
                      user={user} 
                      onOpenFeedback={() => setProjectPage('feedback')}
+                     onDelete={handleDeleteProject}
+                  />
+                ) : projectPage === 'workspace' ? (
+                  <ProjectDetail 
+                     projectId={activeProject}
+                     onOpenDocument={(id) => console.log('Open doc:', id)}
+                     onOpenVideo={(id) => setProjectPage('feedback')}
                   />
                 ) : (
                   <ProjectView projectId={activeProject} user={user} projectDetail={projectDetail} />
@@ -297,6 +352,39 @@ export default function App() {
                    projects={projects} 
                    user={user}
                  />
+              </motion.div>
+            ) : activeTab === 'clients' ? (
+              <motion.div
+                 key="clients"
+                 initial={{ opacity: 0, y: 4 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 exit={{ opacity: 0, y: -4 }}
+                 transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                 className="absolute inset-0"
+              >
+                 <UserManagementView type="clients" title="Clients" description="Manage your client database and billing." icon={<Users className="w-8 h-8 text-white/20 mb-3" />} />
+              </motion.div>
+            ) : activeTab === 'shooters' ? (
+              <motion.div
+                 key="shooters"
+                 initial={{ opacity: 0, y: 4 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 exit={{ opacity: 0, y: -4 }}
+                 transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                 className="absolute inset-0"
+              >
+                 <UserManagementView type="shooters" title="Shooters" description="Manage videographers and availability." icon={<Camera className="w-8 h-8 text-white/20 mb-3" />} />
+              </motion.div>
+            ) : activeTab === 'editors' ? (
+              <motion.div
+                 key="editors"
+                 initial={{ opacity: 0, y: 4 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 exit={{ opacity: 0, y: -4 }}
+                 transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                 className="absolute inset-0"
+              >
+                 <UserManagementView type="editors" title="Editors" description="Manage editors, workloads, and performance." icon={<Film className="w-8 h-8 text-white/20 mb-3" />} />
               </motion.div>
             ) : activeTab === 'settings' ? (
               <motion.div
@@ -429,13 +517,38 @@ function NavItem({ icon, label, active, badge, onClick }: { icon: React.ReactNod
 }
 
 function DashboardView({ onOpenProject, projects, activeTab }: { onOpenProject: (id: string) => void, projects: any[], activeTab: string }) {
-  const ongoingCount = projects ? projects.filter(p => ['progress', 'pending'].includes(p.status)).length : 0;
-  const reviewCount = projects ? projects.filter(p => p.status === 'review').length : 0;
+  const [selectedShooter, setSelectedShooter] = useState<string>('all');
+
+  const handleUpdateStatus = async (projectId: string, newStatus: string) => {
+    try {
+      let progress = 0;
+      if (newStatus === 'pending') progress = 0;
+      else if (newStatus === 'progress') progress = 45;
+      else if (newStatus === 'review') progress = 80;
+      else if (newStatus === 'delivered') progress = 100;
+      else if (newStatus === 'archived') progress = 0;
+
+      await updateDoc(doc(db, 'projects', projectId), {
+        status: newStatus,
+        progress: progress,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `projects/${projectId}`);
+    }
+  };
 
   const displayProjects = projects ? projects.filter(p => {
-    if (activeTab === 'review') return p.status === 'review';
+    if (activeTab === 'review' && p.status !== 'review') return false;
+    if (activeTab === 'dashboard' && (p.status === 'archived' || p.status === 'delivered')) return false;
+    if (activeTab === 'projects' && p.status === 'archived') return false;
+    if (selectedShooter !== 'all' && p.shooterName !== selectedShooter) return false;
     return true;
   }) : [];
+
+  const shooters = projects ? Array.from(new Set(projects.map(p => p.shooterName).filter(Boolean))) : [];
+  const ongoingCount = displayProjects.filter(p => ['progress', 'pending'].includes(p.status)).length;
+  const reviewCount = displayProjects.filter(p => p.status === 'review').length;
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 p-8">
@@ -445,12 +558,24 @@ function DashboardView({ onOpenProject, projects, activeTab }: { onOpenProject: 
           <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-1">
             {activeTab === 'review' ? 'In Review' : (activeTab === 'projects' ? 'All Projects' : 'Active Projects')}
           </h1>
-          <p className="text-sm text-text-secondary">You have {ongoingCount} ongoing edits and {reviewCount} waiting for review.</p>
+          <p className="text-sm text-text-secondary">Showing {displayProjects.length} projects. You have {ongoingCount} ongoing edits and {reviewCount} waiting for review.</p>
         </div>
         
-        <div className="flex bg-surface-1 p-1 rounded-lg border border-border-subtle">
-            <button className="px-3 py-1.5 bg-surface-2 rounded text-sm font-medium text-text-primary shadow-sm border border-border-subtle">Board</button>
-            <button className="px-3 py-1.5 rounded text-sm font-medium text-text-secondary hover:text-text-primary">List</button>
+        <div className="flex items-center gap-4">
+          <select 
+            value={selectedShooter}
+            onChange={(e) => setSelectedShooter(e.target.value)}
+            className="bg-surface-1 border border-border-subtle rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none"
+          >
+            <option value="all">All Shooters</option>
+            {shooters.map(s => (
+              <option key={s as string} value={s as string}>{s as string}</option>
+            ))}
+          </select>
+          <div className="flex bg-surface-1 p-1 rounded-lg border border-border-subtle">
+              <button className="px-3 py-1.5 bg-surface-2 rounded text-sm font-medium text-text-primary shadow-sm border border-border-subtle">Board</button>
+              <button className="px-3 py-1.5 rounded text-sm font-medium text-text-secondary hover:text-text-primary">List</button>
+          </div>
         </div>
       </div>
 
@@ -467,6 +592,8 @@ function DashboardView({ onOpenProject, projects, activeTab }: { onOpenProject: 
             comments={proj.commentsCount || 0}
             id={proj.id.split('-')[1] || proj.id}
             onClick={() => onOpenProject(proj.id)}
+            onConfirm={(e: any) => { e.stopPropagation(); handleUpdateStatus(proj.id, 'pending'); }}
+            onArchive={(e: any) => { e.stopPropagation(); handleUpdateStatus(proj.id, 'archived'); }}
           />
         ))}
         {displayProjects.length === 0 && (
@@ -514,19 +641,21 @@ function DashboardView({ onOpenProject, projects, activeTab }: { onOpenProject: 
   );
 }
 
-function ProjectCard({ title, client, status, dueDate, progress, comments, id, onClick }: any) {
+function ProjectCard({ title, client, status, dueDate, progress, comments, id, onClick, onConfirm, onArchive }: any) {
   const statusConfig: Record<string, { label: string, color: string, bg: string }> = {
+    unconfirmed: { label: 'Unconfirmed', color: 'text-text-muted', bg: 'bg-surface-2 border border-border-subtle' },
     pending: { label: 'Waiting', color: 'text-status-pending', bg: 'bg-status-pending/15' },
     progress: { label: 'Editing', color: 'text-status-progress', bg: 'bg-status-progress/15' },
     review: { label: 'In Review', color: 'text-status-review', bg: 'bg-status-review/15' },
     delivered: { label: 'Delivered', color: 'text-status-delivered', bg: 'bg-status-delivered/15' },
+    archived: { label: 'Archived', color: 'text-text-muted', bg: 'bg-surface-2 border border-border-subtle opacity-50' },
     error: { label: 'Overdue', color: 'text-status-error', bg: 'bg-status-error/15' }
   };
 
-  const conf = statusConfig[status];
+  const conf = statusConfig[status] || statusConfig['pending'];
 
   return (
-    <div onClick={onClick} className="group bg-surface-1 border border-border-subtle rounded-[10px] overflow-hidden hover:border-border-emp transition-colors cursor-pointer flex flex-col h-48">
+    <div onClick={onClick} className="group bg-surface-1 border border-border-subtle rounded-[10px] overflow-hidden hover:border-border-emp transition-colors cursor-pointer flex flex-col min-h-48 relative">
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex justify-between items-start mb-3">
           <div className="font-mono text-xs text-text-muted tracking-wider uppercase">{id}</div>
@@ -541,19 +670,26 @@ function ProjectCard({ title, client, status, dueDate, progress, comments, id, o
         </h3>
         <p className="text-sm text-text-secondary">{client}</p>
         
-        <div className="mt-auto flex items-center justify-between text-xs text-text-muted font-mono">
-          <span>{dueDate}</span>
-          {comments && (
-            <div className="flex items-center gap-1 text-text-secondary font-sans border border-border-subtle bg-surface-2 px-1.5 py-0.5 rounded">
-              <MessageSquare className="w-3 h-3" />
-              <span>{comments}</span>
-            </div>
-          )}
-        </div>
+        {status === 'unconfirmed' ? (
+          <div className="mt-4 flex items-center gap-2">
+             <button onClick={onConfirm} className="flex-1 bg-accent-primary hover:bg-accent-hover text-white text-[11px] font-medium uppercase tracking-wider py-2 rounded transition-colors text-center">Confirm</button>
+             <button onClick={onArchive} className="flex-1 bg-surface-2 hover:bg-surface-3 border border-border-subtle text-text-secondary hover:text-text-primary text-[11px] font-medium uppercase tracking-wider py-2 rounded transition-colors text-center">Archive</button>
+          </div>
+        ) : (
+          <div className="mt-auto flex items-center justify-between text-xs text-text-muted font-mono pt-4">
+            <span>{dueDate}</span>
+            {comments && (
+              <div className="flex items-center gap-1 text-text-secondary font-sans border border-border-subtle bg-surface-2 px-1.5 py-0.5 rounded">
+                <MessageSquare className="w-3 h-3" />
+                <span>{comments}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       
       {/* Progress bar container */}
-      <div className="h-1 bg-surface-2 w-full">
+      <div className="h-1 bg-surface-2 w-full mt-auto">
         <div 
           className={cn("h-full", status === 'delivered' ? "bg-status-delivered" : "bg-accent-primary")} 
           style={{ width: `${progress}%` }}
@@ -595,8 +731,27 @@ function ActivityRow({ user, action, target, time, type }: any) {
   );
 }
 
-function OrderDetailView({ projectId, projectDetail, user, onOpenFeedback }: any) {
+function OrderDetailView({ projectId, projectDetail, user, onOpenFeedback, onDelete }: any) {
   const [activeTab, setActiveTab] = useState('overview');
+  const [isSystemRootPickerOpen, setIsSystemRootPickerOpen] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<FileList | null>(null);
+
+  const handleDelete = async () => {
+    if (!projectId) return;
+    if (onDelete) onDelete(projectId);
+  };
+
+  const handleUpdateProjectField = async (field: string, value: any) => {
+    if (!user || !projectId || !projectDetail) return;
+    try {
+      await updateDoc(doc(db, 'projects', projectId), {
+        [field]: value,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `projects/${projectId}`);
+    }
+  };
 
   const handleUpdateStatus = async (newStatus: string) => {
     if (!user || !projectId || !projectDetail) return;
@@ -619,42 +774,149 @@ function OrderDetailView({ projectId, projectDetail, user, onOpenFeedback }: any
   };
 
   const isUnconfirmed = projectDetail?.status === 'unconfirmed';
-  const hasRawFiles = projectDetail?.status !== 'unconfirmed' && projectDetail?.status !== 'pending';
-  const hasVideoVersions = projectDetail?.status === 'review' || projectDetail?.status === 'delivered';
+  const isPending = projectDetail?.status === 'pending'; // Wait for RAW
+  const isEditing = projectDetail?.status === 'progress';
+  const isReview = projectDetail?.status === 'review';
+  const isDelivered = projectDetail?.status === 'delivered';
+  
+  const [dragActive, setDragActive] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleFilesUpload = async (files: FileList) => {
+    try {
+      const token = localStorage.getItem('google_drive_token');
+      if (!token) {
+        alert("Google Drive not connected! Please connect in Settings to authorize.");
+        return;
+      }
+      
+      const settingsDoc = await getDoc(doc(db, 'settings', 'system'));
+      const rootId = settingsDoc.exists() ? settingsDoc.data()?.driveRootFolderId : null;
+      if (!rootId) {
+        setIsSystemRootPickerOpen(true);
+        // We save the pending files to process after root is selected
+        setPendingFiles(files);
+        return;
+      }
+
+      setIsUploading(true);
+      setUploadProgress(0);
+
+      // Safe names
+      const safeTitle = (projectDetail.title || 'Untitled').replace(/[^a-zA-Z0-9 ]/g, '');
+      const safeClient = (projectDetail.client || 'Client').replace(/[^a-zA-Z0-9 ]/g, '');
+      const safeShooter = (projectDetail.shooterName || 'Unassigned').replace(/[^a-zA-Z0-9 ]/g, '');
+      const projectFolderName = `${projectDetail.id?.split('-')[1]}_${safeClient}_${safeTitle}`;
+      
+      const shooterFolderId = await googleDriveService.getOrCreateFolder(token, safeShooter, rootId);
+      const projectFolderId = await googleDriveService.getOrCreateFolder(token, projectFolderName, shooterFolderId);
+      const rawFolderId = await googleDriveService.getOrCreateFolder(token, 'RAW', projectFolderId);
+      const finalFolderId = await googleDriveService.getOrCreateFolder(token, 'FINAL', projectFolderId);
+      
+      let completedCount = 0;
+      for (let i = 0; i < files.length; i++) {
+        await googleDriveService.uploadFile(token, files[i], rawFolderId, (prog) => {
+           const overallProgress = ((completedCount * 100) + prog) / files.length;
+           setUploadProgress(overallProgress);
+        });
+        completedCount++;
+      }
+      
+      setUploadProgress(100);
+      setTimeout(() => {
+        setIsUploading(false);
+        setUploadProgress(0);
+        handleUpdateStatus('progress');
+      }, 500);
+
+    } catch (e: any) {
+      console.error("Upload error", e);
+      alert("Failed to upload: " + (e.message || 'Unknown error'));
+      setIsUploading(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFilesUpload(e.dataTransfer.files);
+    }
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFilesUpload(e.target.files);
+    }
+  };
+  
+  const hasRawFiles = isEditing || isReview || isDelivered;
+  const showVersions = isEditing || isReview || isDelivered;
 
   return (
-    <div className="max-w-6xl mx-auto p-8 h-full flex flex-col min-h-0">
-      <div className="flex items-start justify-between mb-8 shrink-0">
+    <div className="max-w-6xl mx-auto p-8 h-full flex flex-col min-h-0 bg-[#0A0A0B] text-white">
+      <div className="flex items-start justify-between mb-8 shrink-0 pb-6 border-b border-white/5">
          <div>
            <div className="flex items-center gap-3 mb-2">
-             <h1 className="text-3xl font-semibold tracking-tight text-text-primary">{projectDetail?.title || 'Loading...'}</h1>
+             <input
+               type="text"
+               value={projectDetail?.title || ''}
+               onChange={(e) => handleUpdateProjectField('title', e.target.value)}
+               className="text-2xl font-bold uppercase tracking-[0.1em] text-white bg-transparent border-none outline-none focus:ring-1 focus:ring-indigo-500/50 hover:bg-white/5 rounded px-2 -ml-2 transition-all w-full max-w-lg"
+               placeholder="Project Title"
+             />
              <span className={cn(
-                "px-2.5 py-1 rounded-full text-xs font-semibold capitalize border tracking-wide",
-                projectDetail?.status === 'review' ? "bg-status-review/10 text-status-review border-status-review/20" :
-                projectDetail?.status === 'progress' ? "bg-status-progress/10 text-status-progress border-status-progress/20" :
-                projectDetail?.status === 'delivered' ? "bg-status-success/10 text-status-success border-status-success/20" :
-                projectDetail?.status === 'unconfirmed' ? "bg-surface-2 text-text-muted border-border-subtle" :
-                "bg-status-pending/10 text-status-pending border-status-pending/20"
+                "px-2.5 py-1 rounded bg-[#121214] text-[10px] font-bold uppercase tracking-widest border",
+                projectDetail?.status === 'review' ? "text-purple-400 border-purple-400/20" :
+                projectDetail?.status === 'progress' ? "text-indigo-400 border-indigo-400/20" :
+                projectDetail?.status === 'delivered' ? "text-teal-400 border-teal-400/20" :
+                projectDetail?.status === 'unconfirmed' ? "text-white/40 border-white/10" :
+                projectDetail?.status === 'archived' ? "text-white/20 border-white/5" :
+                "text-blue-400 border-blue-400/20"
               )}>
-                {projectDetail?.status === 'progress' ? 'In Progress' : projectDetail?.status === 'unconfirmed' ? 'Unconfirmed' : projectDetail?.status || 'Pending'}
+                {projectDetail?.status === 'progress' ? 'In Progress' : projectDetail?.status === 'unconfirmed' ? 'Unconfirmed' : projectDetail?.status === 'archived' ? 'Archived' : projectDetail?.status || 'Pending'}
               </span>
            </div>
-           <p className="text-text-secondary">Client: {projectDetail?.client}</p>
+           <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/50 px-2 -ml-2 font-bold">
+             <span>Client:</span>
+             <input
+               type="text"
+               value={projectDetail?.client || ''}
+               onChange={(e) => handleUpdateProjectField('client', e.target.value)}
+               className="bg-transparent border-none outline-none hover:bg-white/5 focus:ring-1 focus:ring-indigo-500/50 rounded px-1 py-0.5 transition-all text-white/80"
+               placeholder="Client Name"
+             />
+           </div>
          </div>
 
          <div className="flex items-center gap-3">
-            {hasVideoVersions && (
+            {showVersions && (
               <button 
                 onClick={onOpenFeedback}
-                className="px-4 py-2 border border-border-subtle bg-surface-1 hover:bg-surface-2 text-text-primary rounded text-sm font-medium transition-colors flex items-center gap-2"
+                className="px-4 py-2 border border-white/5 bg-[#121214] hover:bg-white/5 text-white/80 hover:text-white rounded text-[10px] uppercase tracking-widest font-bold transition-colors flex items-center gap-2"
               >
-                <Video className="w-4 h-4" />
-                Open Feedback Page
+                <Video className="w-3 h-3" />
+                Feedback
               </button>
             )}
             {!isUnconfirmed && (
-              <button className="px-4 py-2 bg-accent-primary hover:bg-accent-hover text-white rounded text-sm font-medium transition-colors flex items-center gap-2">
-                <Share2 className="w-4 h-4" />
+              <button 
+                onClick={() => handleUpdateStatus('delivered')}
+                className="px-4 py-2 border border-teal-500/30 bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 rounded text-[10px] uppercase tracking-widest font-bold transition-colors flex items-center gap-2 shadow-[0_0_15px_rgba(45,212,191,0.1)] hover:shadow-[0_0_20px_rgba(45,212,191,0.2)]"
+              >
+                <Share2 className="w-3 h-3" />
                 Deliver
               </button>
             )}
@@ -662,212 +924,260 @@ function OrderDetailView({ projectId, projectDetail, user, onOpenFeedback }: any
       </div>
 
       <div className="flex gap-8 flex-1 min-h-0">
-         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto pr-2 space-y-8">
+         <div className="flex-1 flex flex-col min-h-0 overflow-y-auto pr-2 space-y-8 custom-scrollbar">
             {/* Meta */}
             <div className="grid grid-cols-3 gap-4">
-              <div className="p-4 bg-surface-1 border border-border-subtle rounded-xl">
-                 <p className="text-xs text-text-muted font-medium mb-1 uppercase tracking-wide">Event Date</p>
-                 <p className="font-medium text-text-primary">{projectDetail?.dueDate !== 'TBD' ? new Date(projectDetail?.dueDate).toLocaleDateString() : 'TBD'}</p>
-                 <p className="text-sm text-text-secondary mt-1">10:00 AM - 02:00 PM</p>
+              <div className="p-4 bg-[#121214] border border-white/5 rounded flex flex-col items-start hover:border-white/10 transition-colors cursor-pointer group">
+                 <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
+                   <Calendar className="w-3 h-3 text-white/20 group-hover:text-indigo-400 transition-colors" /> Event Date
+                 </p>
+                 <p className="font-mono text-sm text-white/90">{projectDetail?.dueDate !== 'TBD' ? new Date(projectDetail?.dueDate).toLocaleDateString() : 'TBD'}</p>
+                 <p className="text-[10px] text-white/40 mt-1 font-mono">10:00 AM - 02:00 PM</p>
               </div>
-              <div className="p-4 bg-surface-1 border border-border-subtle rounded-xl">
-                 <p className="text-xs text-text-muted font-medium mb-1 uppercase tracking-wide">Location</p>
-                 <p className="font-medium text-text-primary">123 Horizon Ave, NY</p>
-                 <p className="text-sm text-status-info mt-1 font-medium hover:underline cursor-pointer">View Map</p>
+              <div className="p-4 bg-[#121214] border border-white/5 rounded flex flex-col items-start hover:border-white/10 transition-colors cursor-pointer group">
+                 <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
+                    <MapPin className="w-3 h-3 text-white/20 group-hover:text-indigo-400 transition-colors" /> Location
+                 </p>
+                 <p className="font-mono text-sm text-white/90">123 Horizon Ave, NY</p>
+                 <p className="text-[10px] text-indigo-400 mt-1 font-bold uppercase tracking-widest hover:text-indigo-300">View Map</p>
               </div>
-              <div className="p-4 bg-surface-1 border border-border-subtle rounded-xl">
-                 <p className="text-xs text-text-muted font-medium mb-1 uppercase tracking-wide">Job Type</p>
-                 <p className="font-medium text-text-primary">Real Estate Promo</p>
-                 <div className="flex gap-1 mt-2">
-                    <span className="px-2 py-0.5 bg-surface-2 rounded text-[10px] font-medium text-text-secondary border border-border-subtle">DRONE</span>
-                    <span className="px-2 py-0.5 bg-surface-2 rounded text-[10px] font-medium text-text-secondary border border-border-subtle">CAM</span>
+              <div className="p-4 bg-[#121214] border border-white/5 rounded flex flex-col items-start hover:border-white/10 transition-colors cursor-pointer group">
+                 <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
+                    <Video className="w-3 h-3 text-white/20 group-hover:text-indigo-400 transition-colors" /> Job Type
+                 </p>
+                 <p className="font-mono text-sm text-white/90">Real Estate Promo</p>
+                 <div className="flex gap-2 mt-2">
+                    <span className="px-1.5 py-0.5 bg-white/5 rounded text-[9px] font-bold text-white/50 uppercase tracking-widest border border-white/5">DRONE</span>
+                    <span className="px-1.5 py-0.5 bg-white/5 rounded text-[9px] font-bold text-white/50 uppercase tracking-widest border border-white/5">CAM</span>
                  </div>
               </div>
             </div>
 
             {isUnconfirmed ? (
-              <div className="border border-status-pending/30 bg-status-pending/5 rounded-xl p-8 flex flex-col items-center justify-center text-center">
-                 <div className="w-12 h-12 bg-status-pending/10 text-status-pending rounded-full flex items-center justify-center mb-4">
-                   <Calendar className="w-6 h-6" />
+              <div className="border border-blue-500/20 bg-blue-500/5 rounded p-8 flex flex-col items-center justify-center text-center relative overflow-hidden group">
+                 <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                 <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg flex items-center justify-center mb-4 relative z-10">
+                   <Calendar className="w-5 h-5" />
                  </div>
-                 <h3 className="text-lg font-semibold text-text-primary mb-2">Confirm Calendar Event</h3>
-                 <p className="text-sm text-text-secondary mb-6 max-w-md">This event was synced from Google Calendar. Please confirm if this is an actual order that needs processing.</p>
-                 <div className="flex gap-3">
+                 <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-2 relative z-10">Confirm Calendar Event</h3>
+                 <p className="text-[11px] text-white/50 mb-6 max-w-md font-mono relative z-10">This event was synced from Google Calendar. Please confirm if this is an actual order that needs processing.</p>
+                 <div className="flex gap-3 relative z-10">
                    <button 
                      onClick={() => handleUpdateStatus('pending')}
-                     className="px-6 py-2 bg-accent-primary hover:bg-accent-hover text-white font-medium rounded-lg transition-colors"
+                     className="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-widest rounded transition-colors shadow-[0_0_15px_rgba(99,102,241,0.3)]"
                    >
                      Confirm as Order
                    </button>
                    <button 
-                     className="px-6 py-2 bg-surface-1 border border-border-subtle hover:bg-surface-2 text-text-primary font-medium rounded-lg transition-colors"
+                     onClick={() => handleUpdateStatus('archived')}
+                     className="px-6 py-2 bg-[#121214] border border-white/10 hover:bg-white/5 text-white/70 hover:text-white text-[10px] font-bold uppercase tracking-widest rounded transition-colors"
                    >
-                     Dismiss Event
+                     Archive
                    </button>
                  </div>
               </div>
             ) : (
               <>
                 {/* Upload Area */}
-                <div className="border border-border-subtle rounded-xl overflow-hidden bg-bg-base">
-                   <div className="p-4 border-b border-border-subtle bg-surface-1 flex items-center justify-between">
+                <div 
+                   className={cn("border rounded bg-[#121214] overflow-hidden flex flex-col relative transition-colors", dragActive ? "border-indigo-500/50 bg-indigo-500/5 shadow-[0_0_30px_rgba(99,102,241,0.1)]" : "border-white/5")}
+                   onDragEnter={handleDrag}
+                   onDragLeave={handleDrag}
+                   onDragOver={handleDrag}
+                   onDrop={handleDrop}
+                >
+                   <div className="p-4 border-b border-white/5 bg-[#0D0D0E] flex items-center justify-between">
                       <div>
-                        <h3 className="font-semibold text-text-primary">RAW Files Upload</h3>
-                        <p className="text-xs text-text-secondary mt-0.5">
-                          {hasRawFiles ? '142 files uploaded (42 GB)' : 'Waiting for shooter to upload files'}
+                        <h3 className={cn("font-bold text-[11px] uppercase tracking-widest transition-colors", dragActive ? "text-indigo-400" : "text-white")}>RAW Files Upload (RAW Folder)</h3>
+                        <p className="text-[10px] font-mono text-white/40 mt-1">
+                          {isUploading ? 'Uploading...' : hasRawFiles ? 'Files uploaded' : 'Drag & drop files or click to browse'}
                         </p>
                       </div>
-                      <button className="px-3 py-1.5 bg-surface-2 border border-border-subtle hover:bg-border-subtle rounded text-sm font-medium transition-colors text-text-primary">
-                        Upload RAW
-                      </button>
+                      <label className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded text-[10px] uppercase tracking-widest font-bold transition-colors text-white/80 flex items-center gap-2 cursor-pointer">
+                        <Plus className="w-3 h-3" /> Browse Files
+                        <input type="file" multiple className="hidden" onChange={handleFileInput} />
+                      </label>
                    </div>
-                   <div className="p-6 flex flex-col items-center justify-center text-center">
-                      {hasRawFiles ? (
+                   <div className="p-8 flex flex-col items-center justify-center text-center bg-[#121214]/50 min-h-[160px] pointer-events-none">
+                      {isUploading ? (
                         <>
-                          <FolderOpen className="w-8 h-8 text-status-success mb-3" />
-                          <p className="font-medium text-text-primary">All RAW files uploaded successfully.</p>
-                          <div className="w-64 h-1.5 bg-surface-2 rounded-full overflow-hidden mt-4">
-                             <div className="h-full bg-status-success rounded-full w-full"></div>
+                          <div className="w-8 h-8 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin mb-3"></div>
+                          <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-400">Uploading files to Root/Project/RAW...</p>
+                          <div className="w-64 h-1 bg-white/5 rounded-full overflow-hidden mt-4 border border-white/5">
+                             <div className="h-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)] transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
                           </div>
+                        </>
+                      ) : hasRawFiles ? (
+                        <>
+                          <FolderOpen className="w-8 h-8 text-indigo-400 mb-3" />
+                          <p className="text-[11px] font-bold uppercase tracking-widest text-white/80">RAW files uploaded.</p>
+                          <p className="text-[10px] font-mono text-indigo-400/50 mt-1">Project is ready for Editor.</p>
                         </>
                       ) : (
                         <>
-                          <FolderOpen className="w-8 h-8 text-text-muted opacity-50 mb-3" />
-                          <p className="font-medium text-text-secondary">No files uploaded yet.</p>
-                          <p className="text-sm text-text-muted mt-1">Raw footage should be uploaded by the assigned shooter.</p>
+                          <FolderOpen className={cn("w-8 h-8 mb-3 transition-colors", dragActive ? "text-indigo-400 scale-110" : "text-white/10")} />
+                          <p className={cn("text-[11px] font-bold uppercase tracking-widest transition-colors", dragActive ? "text-indigo-400" : "text-white/40")}>Drop footage here</p>
+                          <p className="text-[10px] font-mono text-white/30 mt-1">Will be uploaded to project's RAW folder</p>
                         </>
                       )}
                    </div>
                 </div>
 
                 {/* Deliverables */}
-                <div>
-                   <h3 className="font-semibold text-text-primary mb-4">Versions</h3>
-                   {hasVideoVersions ? (
-                     <div className="space-y-3">
-                        <div className="p-4 border border-border-subtle rounded-xl bg-surface-1 flex items-center justify-between group">
-                           <div className="flex items-center gap-4">
-                              <div className="w-16 h-10 bg-bg-base rounded overflow-hidden relative border border-border-subtle flex items-center justify-center">
-                                 <Video className="w-5 h-5 text-text-muted" />
-                              </div>
-                              <div>
-                                 <p className="font-medium text-text-primary text-sm line-clamp-1">V2_Horizon_Promo_Final.mp4</p>
-                                 <p className="text-xs text-text-secondary mt-0.5">Uploaded 2 hours ago • Version 2</p>
-                              </div>
-                           </div>
-                           <div className="flex items-center gap-2">
-                              <button className="p-2 text-text-muted hover:text-text-primary transition-colors bg-surface-2 rounded border border-border-subtle opacity-0 group-hover:opacity-100">
-                                 <Download className="w-4 h-4" />
-                              </button>
-                              <span className="px-2 py-1 bg-status-review/10 text-status-review border border-status-review/20 text-xs font-semibold rounded uppercase tracking-wide">Needs Review</span>
-                           </div>
-                        </div>
-                        <div className="p-4 border border-border-subtle rounded-xl bg-bg-base flex items-center justify-between opacity-70">
-                           <div className="flex items-center gap-4">
-                              <div className="w-16 h-10 bg-surface-1 rounded overflow-hidden relative border border-border-subtle flex items-center justify-center">
-                                 <Video className="w-5 h-5 text-text-muted" />
-                              </div>
-                              <div>
-                                 <p className="font-medium text-text-primary text-sm line-clamp-1">V1_Horizon_Promo.mp4</p>
-                                 <p className="text-xs text-text-secondary mt-0.5">Uploaded yesterday • Version 1</p>
-                              </div>
-                           </div>
-                           <div className="flex items-center gap-2">
-                              <span className="px-2 py-1 bg-surface-2 text-text-secondary border border-border-subtle text-xs font-semibold rounded uppercase tracking-wide">Archived</span>
-                           </div>
-                        </div>
-                     </div>
-                   ) : (
-                     <div className="p-8 border border-dashed border-border-subtle rounded-xl flex flex-col items-center justify-center text-center">
-                        <Video className="w-8 h-8 text-text-muted opacity-50 mb-3" />
-                        <p className="font-medium text-text-secondary">No versions available</p>
-                        <p className="text-sm text-text-muted mt-1">Edited videos will appear here once the editor uploads them.</p>
-                     </div>
-                   )}
-                </div>
+                {showVersions && (
+                  <div>
+                     <h3 className="font-bold text-white/40 text-[10px] uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                       <Film className="w-3 h-3 text-white/20" /> Versions
+                     </h3>
+                     {hasRawFiles && (isReview || isDelivered) ? (
+                       <div className="space-y-2">
+                          <div className="p-3 border border-white/10 rounded bg-[#121214] flex items-center justify-between group hover:border-white/20 transition-colors cursor-pointer">
+                             <div className="flex items-center gap-4">
+                                <div className="w-14 h-9 bg-[#0A0A0B] rounded border border-white/5 flex items-center justify-center">
+                                   <Video className="w-4 h-4 text-indigo-400/50 group-hover:text-indigo-400 transition-colors" />
+                                </div>
+                                <div>
+                                   <p className="font-bold text-white text-[11px] tracking-wide line-clamp-1">V2_Horizon_Promo_Final.mp4</p>
+                                   <p className="text-[9px] font-mono text-white/40 mt-1">Uploaded 2 hours ago • Version 2</p>
+                                </div>
+                             </div>
+                             <div className="flex items-center gap-3">
+                                <button className="p-1.5 text-white/40 hover:text-white transition-colors bg-white/5 rounded border border-white/5 opacity-0 group-hover:opacity-100">
+                                   <Download className="w-3 h-3" />
+                                </button>
+                                <button onClick={onOpenFeedback} className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 text-[9px] font-bold rounded uppercase tracking-widest transition-colors">Needs Review</button>
+                             </div>
+                          </div>
+                          <div className="p-3 border border-white/5 rounded bg-[#121214]/50 flex items-center justify-between opacity-50 hover:opacity-100 transition-opacity">
+                             <div className="flex items-center gap-4">
+                                <div className="w-14 h-9 bg-[#0A0A0B] rounded border border-white/5 flex items-center justify-center">
+                                   <Video className="w-4 h-4 text-white/20" />
+                                </div>
+                                <div>
+                                   <p className="font-bold text-white text-[11px] tracking-wide line-clamp-1">V1_Horizon_Promo.mp4</p>
+                                   <p className="text-[9px] font-mono text-white/40 mt-1">Uploaded yesterday • Version 1</p>
+                                </div>
+                             </div>
+                             <div className="flex items-center gap-2">
+                                <span className="px-2 py-1 bg-white/5 text-white/30 border border-white/5 text-[9px] font-bold rounded uppercase tracking-widest">Archived</span>
+                             </div>
+                          </div>
+                       </div>
+                     ) : (
+                       <div className="p-8 border border-white/5 bg-[#121214] rounded flex flex-col items-center justify-center text-center">
+                          <Video className="w-8 h-8 text-white/10 mb-3" />
+                          <p className="text-[11px] font-bold uppercase tracking-widest text-white/40">Editing in progress...</p>
+                          <p className="text-[10px] font-mono text-white/30 mt-1">Edited videos will appear here once ready.</p>
+                       </div>
+                     )}
+                  </div>
+                )}
               </>
             )}
          </div>
 
-         <div className="w-80 shrink-0 flex flex-col gap-6">
-            <div className="p-5 bg-surface-1 border border-border-subtle rounded-xl relative overflow-hidden">
-               <div className="absolute top-0 left-0 w-1 h-full bg-accent-primary"></div>
-               <h3 className="font-semibold text-text-primary mb-4 text-sm uppercase tracking-wide">Management</h3>
+         <div className="w-[300px] shrink-0 flex flex-col gap-6">
+            <div className="p-5 bg-[#121214] border border-white/5 rounded relative overflow-hidden flex flex-col gap-5">
+               <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500/50"></div>
+               <h3 className="font-bold text-white/40 text-[10px] uppercase tracking-[0.2em] flex items-center gap-2">
+                  <Settings className="w-3 h-3 text-white/20" /> Management
+               </h3>
                
-               <div className="space-y-4">
+               <div className="space-y-5">
                   <div>
-                     <label className="block text-xs font-medium text-text-secondary mb-1">Status</label>
+                     <label className="block text-[9px] font-bold uppercase tracking-widest text-white/30 mb-1.5">Status</label>
                      <select 
                        value={projectDetail?.status || 'unconfirmed'} 
                        onChange={(e) => handleUpdateStatus(e.target.value)}
-                       className="w-full bg-bg-base border border-border-subtle rounded p-2 text-sm text-text-primary outline-none focus:border-accent-primary transition-colors cursor-pointer"
+                       className="w-full bg-[#0A0A0B] border border-white/10 rounded px-2 py-1.5 text-[11px] font-mono text-white/80 outline-none focus:border-indigo-500/50 transition-colors cursor-pointer"
                      >
                        <option value="unconfirmed">Unconfirmed Event</option>
                        <option value="pending">Wait for RAW</option>
                        <option value="progress">Editing</option>
                        <option value="review">In Review</option>
                        <option value="delivered">Delivered</option>
+                       <option value="archived">Archived</option>
                      </select>
                   </div>
 
                   <div>
-                     <label className="block text-xs font-medium text-text-secondary mb-1">Google Drive Folder</label>
-                     <div className="w-full flex items-center justify-between bg-bg-base border border-border-subtle rounded p-2 text-sm text-text-primary hover:border-border-emp cursor-pointer transition-colors">
+                     <label className="block text-[9px] font-bold uppercase tracking-widest text-white/30 mb-1.5">Drive Folder</label>
+                     <div className="w-full flex items-center justify-between bg-[#0A0A0B] border border-white/10 rounded px-2 py-1.5 text-[11px] font-mono text-white/80 transition-colors group">
                         <div className="flex items-center gap-2">
-                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.33333 19.3333L1.66666 8.00001L5.33333 2.00001L12.1667 13.6667L8.33333 19.3333Z" fill="#0066DA"/><path d="M12.1667 19.3333H23.5L15.8333 6.00001L12.1667 13.6667V19.3333Z" fill="#00AA4A"/><path d="M5.33333 2.00001H15.8333L23.5 13.6667H12.1667L5.33333 2.00001Z" fill="#FFC100"/></svg>
-                           <span className="truncate w-32">Client_Assets_2026/</span>
+                           <FolderOpen className="w-3 h-3 text-indigo-400/50" />
+                           <span className="truncate w-36 text-indigo-400">Root / {projectDetail?.shooterName || 'Shooter'} / {projectDetail?.title || 'Project'}</span>
                         </div>
-                        <button className="text-xs text-accent-primary hover:underline font-medium">Change</button>
                      </div>
                   </div>
                   
                   <div>
-                     <label className="block text-xs font-medium text-text-secondary mb-1">Assigned Shooter</label>
-                     <div className="w-full flex items-center justify-between bg-bg-base border border-border-subtle rounded p-2 text-sm text-text-primary hover:border-border-emp cursor-pointer transition-colors">
-                        <div className="flex items-center gap-2">
-                           <div className="w-5 h-5 rounded-full bg-accent-primary text-white flex items-center justify-center text-[10px] font-bold">ST</div>
-                           Sam Taylor
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-text-muted" />
-                     </div>
+                     <label className="block text-[9px] font-bold uppercase tracking-widest text-white/30 mb-1.5">Assigned Shooter</label>
+                     <input
+                       type="text"
+                       value={projectDetail?.ownerId !== user.uid ? (projectDetail?.shooterName || 'Unassigned') : projectDetail?.shooterName || ''}
+                       placeholder="Enter shooter name"
+                       onChange={(e) => handleUpdateProjectField('shooterName', e.target.value)}
+                       disabled={projectDetail?.ownerId !== user.uid && projectDetail?.status !== 'unconfirmed'}
+                       className="w-full bg-[#0A0A0B] border border-white/10 rounded px-2 py-1.5 text-[11px] font-mono text-white/80 outline-none focus:border-indigo-500/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                     />
                   </div>
 
                   <div>
-                     <label className="block text-xs font-medium text-text-secondary mb-1">Assigned Editor</label>
-                     <div className="w-full flex items-center gap-2 bg-bg-base border border-border-subtle rounded p-2 text-sm text-text-primary hover:border-border-emp cursor-pointer transition-colors">
-                        {projectDetail?.status === 'unconfirmed' ? (
-                          <span className="text-text-muted italic">Unassigned</span>
-                        ) : (
-                          <>
-                            <div className="w-5 h-5 rounded-full bg-status-info text-white flex items-center justify-center text-[10px] font-bold">AL</div>
-                            Alex (In-house)
-                            <ChevronRight className="w-4 h-4 text-text-muted ml-auto" />
-                          </>
-                        )}
-                     </div>
+                     <label className="block text-[9px] font-bold uppercase tracking-widest text-white/30 mb-1.5">Assigned Editor</label>
+                     <input
+                       type="text"
+                       value={projectDetail?.editorName || ''}
+                       placeholder="Enter editor name"
+                       onChange={(e) => handleUpdateProjectField('editorName', e.target.value)}
+                       className="w-full bg-[#0A0A0B] border border-white/10 rounded px-2 py-1.5 text-[11px] font-mono text-white/80 outline-none focus:border-indigo-500/50 transition-colors"
+                     />
                   </div>
                </div>
             </div>
 
             {!isUnconfirmed && (
-              <div className="p-5 border border-border-subtle rounded-xl bg-bg-base">
-                 <h3 className="font-semibold text-text-primary mb-4 text-sm uppercase tracking-wide">Deadlines</h3>
+              <div className="p-5 bg-[#121214] border border-white/5 rounded relative">
+                 <h3 className="font-bold text-white/40 text-[10px] uppercase tracking-[0.2em] mb-4">Deadlines</h3>
                  <div className="space-y-3">
-                    <div className="flex justify-between items-center text-sm">
-                       <span className="text-text-secondary flex items-center gap-2"><Clock className="w-4 h-4" /> Editing</span>
-                       <span className={cn("font-medium", projectDetail?.status === 'pending' ? "text-text-muted" : "text-status-warning")}>
-                         {projectDetail?.status === 'pending' ? 'Starts after upload' : '48h remaining'}
+                    <div className="flex justify-between items-center text-[11px]">
+                       <span className="text-white/40 font-bold uppercase tracking-widest flex items-center gap-2"> Editing</span>
+                       <span className={cn("font-mono", projectDetail?.status === 'pending' ? "text-white/20" : "text-orange-400 font-bold")}>
+                         {projectDetail?.status === 'pending' ? 'TBD' : '48h remaining'}
                        </span>
                     </div>
-                    <div className="flex justify-between items-center text-sm">
-                       <span className="text-text-secondary flex items-center gap-2"><Clock className="w-4 h-4" /> Revision</span>
-                       <span className="font-medium text-text-muted">--</span>
+                    <div className="w-full h-px bg-white/5"></div>
+                    <div className="flex justify-between items-center text-[11px]">
+                       <span className="text-white/40 font-bold uppercase tracking-widest flex items-center gap-2"> Revision</span>
+                       <span className="font-mono text-white/20">--</span>
                     </div>
                  </div>
               </div>
             )}
          </div>
       </div>
+
+      {isSystemRootPickerOpen && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+           <div className="w-full max-w-2xl relative">
+             <DriveFolderMapper 
+               accessToken={localStorage.getItem('google_drive_token') || ''} 
+               onSelectRoot={async (id, name) => {
+                 try {
+                   await setDoc(doc(db, 'settings', 'system'), { driveRootFolderName: name, driveRootFolderId: id }, { merge: true });
+                   setIsSystemRootPickerOpen(false);
+                   if (pendingFiles) {
+                     handleFilesUpload(pendingFiles);
+                     setPendingFiles(null);
+                   }
+                 } catch (error) {
+                   handleFirestoreError(error, OperationType.UPDATE, 'settings/system');
+                 }
+               }}
+               onClose={() => setIsSystemRootPickerOpen(false)}
+             />
+           </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1078,14 +1388,25 @@ function CalendarView({ onOpenProject, projects, user }: { onOpenProject: (id: s
     
     if (!user) return;
     try {
+      const description = ev.description || '';
+      const shooterMatch = description.match(/Shooter:\s*([^\n]+)/i);
+      const clientMatch = description.match(/Client:\s*([^\n]+)/i);
+      const editorMatch = description.match(/Editor:\s*([^\n]+)/i);
+
+      const shooterName = shooterMatch ? shooterMatch[1].trim() : '';
+      const clientName = clientMatch ? clientMatch[1].trim() : 'TBD Client';
+      const editorName = editorMatch ? editorMatch[1].trim() : '';
+
       const newProjectId = `PRJ-${Date.now()}`;
       await setDoc(doc(db, 'projects', newProjectId), {
         title: ev.summary || 'Busy',
-        client: 'TBD Client',
+        client: clientName,
+        shooterName: shooterName,
+        editorName: editorName,
         status: 'unconfirmed',
         progress: 0,
         dueDate: ev.start ? (ev.start.dateTime || ev.start.date) : new Date().toISOString(),
-        members: [user.uid],
+        ownerId: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
@@ -1189,76 +1510,79 @@ function CalendarView({ onOpenProject, projects, user }: { onOpenProject: (id: s
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 p-8 h-full flex flex-col">
-      <div className="flex items-end justify-between shrink-0">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-1">Schedule</h1>
-          <p className="text-sm text-text-secondary">{currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+    <div className="max-w-7xl mx-auto p-8 h-full flex flex-col bg-[#0A0A0B] text-white">
+      <div className="flex items-end justify-between shrink-0 mb-8 pb-6 border-b border-white/5">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-bold uppercase tracking-[0.2em] text-white">Ops Calendar</h1>
+          <p className="text-[10px] text-white/40 uppercase font-mono tracking-widest">{currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
         </div>
         
         <div className="flex items-center gap-3">
             {!isConnected && (
-              <span className="text-sm text-status-pending px-3">Google Calendar not connected</span>
+              <span className="text-[10px] text-orange-400 px-3 uppercase tracking-widest font-bold flex items-center gap-2">
+                 <div className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse"></div>
+                 Calendar Not Synced
+              </span>
             )}
-            <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1.5 rounded text-sm font-medium text-text-primary bg-surface-1 border border-border-subtle hover:bg-surface-2 transition-colors">Today</button>
-            <div className="flex bg-surface-1 rounded-lg border border-border-subtle items-center">
-                <button onClick={prevMonth} className="px-2 py-1.5 text-text-muted hover:text-text-primary transition-colors flex items-center justify-center border-r border-border-subtle hover:bg-surface-2 rounded-l-lg">
+            <button onClick={() => setCurrentDate(new Date())} className="px-4 py-2 border border-white/5 bg-[#121214] hover:bg-white/5 text-white/80 hover:text-white rounded text-[10px] uppercase tracking-widest font-bold transition-colors">Today</button>
+            <div className="flex bg-[#121214] rounded border border-white/5 items-center overflow-hidden">
+                <button onClick={prevMonth} className="px-3 py-2 text-white/40 hover:text-white transition-colors flex items-center justify-center border-r border-white/5 hover:bg-white/5">
                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 </button>
-                <button onClick={nextMonth} className="px-2 py-1.5 text-text-muted hover:text-text-primary transition-colors flex items-center justify-center hover:bg-surface-2 rounded-r-lg">
+                <button onClick={nextMonth} className="px-3 py-2 text-white/40 hover:text-white transition-colors flex items-center justify-center hover:bg-white/5">
                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
                 </button>
             </div>
-            <div className="flex bg-surface-1 p-1 rounded-lg border border-border-subtle ml-2">
-                <button className="px-3 py-1.5 bg-surface-2 rounded text-sm font-medium text-text-primary shadow-sm border border-border-subtle">Month</button>
-                <button className="px-3 py-1.5 rounded text-sm font-medium text-text-secondary hover:text-text-primary">Week</button>
+            <div className="flex bg-[#121214] p-1 rounded border border-white/5 ml-2">
+                <button className="px-3 py-1.5 bg-white/5 rounded text-[10px] font-bold text-white uppercase tracking-widest border border-white/5">Month</button>
+                <button className="px-3 py-1.5 rounded text-[10px] font-bold text-white/40 hover:text-white uppercase tracking-widest">Week</button>
             </div>
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-0 gap-6">
-        <div className="flex-1 flex flex-col min-h-0 bg-surface-1 border border-border-subtle rounded-xl overflow-hidden">
-          <div className="grid grid-cols-7 border-b border-border-subtle shrink-0 bg-surface-2">
+      <div className="flex flex-1 min-h-0 gap-8">
+        <div className="flex-1 flex flex-col min-h-0 bg-[#121214] border border-white/5 rounded overflow-hidden">
+          <div className="grid grid-cols-7 border-b border-white/5 shrink-0 bg-black/20">
             {daysOfWeek.map(day => (
-              <div key={day} className="py-3 px-4 text-[12px] font-semibold tracking-wide text-text-muted uppercase text-right">
+              <div key={day} className="py-3 px-4 text-[10px] font-bold tracking-[0.2em] text-white/30 uppercase text-right">
                 {day}
               </div>
             ))}
           </div>
           
-          <div className="flex-1 grid grid-cols-7 grid-rows-5 bg-border-subtle gap-px">
+          <div className="flex-1 grid grid-cols-7 grid-rows-5 bg-white/5 gap-[1px]">
             {dates.map((d, i) => (
               <div 
                 key={i} 
                 onClick={() => { setSelectedDateObj(d.fullDate); setSelectedDateEvents(d.dayEvents); }}
                 className={cn(
-                "bg-bg-base/50 p-2 border-border-subtle transition-colors group relative",
-                d.isCurrentMonth ? "hover:bg-surface-1 cursor-pointer" : "opacity-30 bg-bg-base cursor-pointer",
-                selectedDateObj?.getTime() === d.fullDate.getTime() && "ring-2 ring-inset ring-accent-primary bg-surface-1"
+                "bg-[#0A0A0B] p-2 transition-colors relative group",
+                d.isCurrentMonth ? "hover:bg-[#121214] cursor-pointer" : "opacity-30 bg-[#0A0A0B] cursor-pointer",
+                selectedDateObj?.getTime() === d.fullDate.getTime() && "bg-indigo-500/5 ring-1 ring-inset ring-indigo-500/30"
               )}>
-                <div className="flex justify-end mb-2">
+                <div className="flex justify-end mb-2 relative z-10">
                   <span className={cn(
-                    "text-sm font-mono flex items-center justify-center w-6 h-6 rounded-full transition-colors", 
-                    d.isToday ? "bg-accent-primary text-white" : "text-text-secondary group-hover:text-text-primary",
-                    selectedDateObj?.getTime() === d.fullDate.getTime() && !d.isToday && "bg-surface-2 text-text-primary"
+                    "text-[11px] font-mono flex items-center justify-center w-6 h-6 rounded transition-colors", 
+                    d.isToday ? "bg-indigo-500 text-white font-bold" : "text-white/40 group-hover:text-white",
+                    selectedDateObj?.getTime() === d.fullDate.getTime() && !d.isToday && "bg-white/10 text-white font-bold"
                   )}>
                     {d.date}
                   </span>
                 </div>
                 
-                <div className="space-y-1">
+                <div className="space-y-1 relative z-10">
                   {d.dayEvents.slice(0, 3).map((ev: any, evIdx: number) => (
                     <div key={evIdx} className={cn(
-                      "px-2 py-1 rounded text-xs truncate font-medium",
-                      evIdx % 3 === 0 ? "bg-status-progress/15 border border-status-progress/30 text-status-progress" :
-                      evIdx % 3 === 1 ? "bg-status-review/15 border border-status-review/30 text-status-review" :
-                      "bg-status-pending/15 border border-status-pending/30 text-status-pending"
+                      "px-1.5 py-1 rounded text-[9px] uppercase tracking-wider truncate font-bold border",
+                      evIdx % 3 === 0 ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-400" :
+                      evIdx % 3 === 1 ? "bg-purple-500/10 border-purple-500/20 text-purple-400" :
+                      "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
                     )}>
                       {ev.summary || 'Busy'}
                     </div>
                   ))}
                   {d.dayEvents.length > 3 && (
-                    <div className="text-[10px] text-text-muted px-2 font-medium">+{d.dayEvents.length - 3} more</div>
+                    <div className="text-[9px] text-white/40 px-1 font-mono">+{d.dayEvents.length - 3} more</div>
                   )}
                 </div>
               </div>
@@ -1267,31 +1591,32 @@ function CalendarView({ onOpenProject, projects, user }: { onOpenProject: (id: s
         </div>
 
         {selectedDateObj && (
-          <div className="w-[320px] shrink-0 bg-surface-1 border border-border-subtle rounded-xl p-4 flex flex-col overflow-y-auto">
-            <h3 className="font-semibold text-text-primary mb-1">
+          <div className="w-[320px] shrink-0 bg-[#121214] border border-white/5 rounded p-5 flex flex-col overflow-y-auto custom-scrollbar relative">
+            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500/50"></div>
+            <h3 className="font-bold text-white text-[11px] uppercase tracking-widest mb-1">
                {selectedDateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </h3>
-            <p className="text-sm text-text-secondary mb-6">
-              {selectedDateEvents.length} event{selectedDateEvents.length !== 1 ? 's' : ''}
+            <p className="text-[10px] text-white/40 font-mono mb-6 pb-4 border-b border-white/5">
+              {selectedDateEvents.length} event{selectedDateEvents.length !== 1 ? 's' : ''} scheduled
             </p>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               {selectedDateEvents.length === 0 ? (
-                 <div className="py-8 text-center border border-dashed border-border-subtle rounded-lg">
-                   <Clock className="w-6 h-6 text-text-muted mx-auto mb-2 opacity-50" />
-                   <span className="text-sm text-text-muted">No events scheduled.</span>
+                 <div className="py-8 text-center border border-dashed border-white/5 rounded">
+                   <Clock className="w-5 h-5 text-white/20 mx-auto mb-2" />
+                   <span className="text-[10px] uppercase font-bold tracking-widest text-white/30">No activities.</span>
                  </div>
               ) : (
                 selectedDateEvents.map((ev, i) => (
-                  <div key={i} className="p-4 bg-bg-base border border-border-subtle rounded-lg hover:border-accent-primary transition-colors cursor-pointer" onClick={() => handleOpenEvent(ev)}>
+                  <div key={i} className="p-4 bg-[#0A0A0B] border border-white/5 rounded hover:border-indigo-500/30 transition-colors cursor-pointer group" onClick={() => handleOpenEvent(ev)}>
                     <div className="flex items-start justify-between mb-2">
-                       <h4 className="font-medium text-sm text-text-primary leading-tight line-clamp-2">{ev.summary || 'Busy'}</h4>
-                       <span className="w-2 h-2 rounded-full bg-accent-primary shrink-0 mt-1"></span>
+                       <h4 className="font-bold text-[11px] uppercase tracking-wide text-white leading-tight pr-4">{ev.summary || 'Busy'}</h4>
+                       <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0 mt-1 shadow-[0_0_8px_rgba(129,140,248,0.5)]"></span>
                     </div>
-                    {ev.description && <p className="text-xs text-text-secondary line-clamp-2 mb-3">{ev.description}</p>}
-                    <div className="flex gap-2 text-xs">
-                       <button className="px-3 py-1.5 bg-surface-2 hover:bg-border-subtle text-text-primary rounded font-medium transition-colors w-full text-center">
-                          Order Details
+                    {ev.description && <p className="text-[10px] font-mono text-white/40 line-clamp-2 mb-4">{ev.description}</p>}
+                    <div className="flex">
+                       <button className="px-3 py-1.5 bg-white/5 group-hover:bg-indigo-500/10 text-white/60 group-hover:text-indigo-400 border border-white/5 group-hover:border-indigo-500/20 text-[9px] uppercase tracking-widest font-bold rounded transition-colors w-full text-center">
+                          Process Order
                        </button>
                     </div>
                   </div>
@@ -1305,13 +1630,99 @@ function CalendarView({ onOpenProject, projects, user }: { onOpenProject: (id: s
   );
 }
 
+function UserManagementView({ title, type, description, icon }: { title: string, type: 'clients' | 'shooters' | 'editors', description: string, icon: React.ReactNode }) {
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // We could fetch real users from a 'users' collection with role = type
+    // For now we simulate an empty view ready for real entries
+    const unsub = onSnapshot(query(collection(db, 'profiles'), where('role', '==', type)), (snapshot) => {
+      setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      console.error(error);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [type]);
+
+  return (
+    <div className="max-w-7xl mx-auto p-8 h-full flex flex-col bg-[#0A0A0B] text-white">
+      <div className="flex items-end justify-between shrink-0 mb-8 pb-6 border-b border-white/5">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-bold uppercase tracking-[0.2em] text-white">{title}</h1>
+          <p className="text-[10px] text-white/40 uppercase font-mono tracking-widest">{description}</p>
+        </div>
+        <button className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] uppercase font-bold tracking-widest rounded transition-colors flex items-center gap-2">
+          <Plus className="w-4 h-4" /> Add {title.slice(0, -1)}
+        </button>
+      </div>
+      
+      <div className="flex-1 overflow-auto">
+         {loading ? (
+           <div className="flex items-center justify-center h-64">
+              <div className="w-8 h-8 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin"></div>
+           </div>
+         ) : users.length === 0 ? (
+           <div className="flex flex-col items-center justify-center p-12 border border-white/5 border-dashed rounded-lg bg-[#121214] mt-8 text-center">
+             <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4">
+               {icon}
+             </div>
+             <h3 className="font-bold text-sm uppercase tracking-widest text-white mb-2">No {title} Found</h3>
+             <p className="text-[11px] font-mono text-white/40 max-w-md">
+               There are no {type} in your database yet. Add your first one to start assigning them to projects.
+             </p>
+           </div>
+         ) : (
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+             {users.map(u => (
+               <div key={u.id} className="p-5 border border-white/5 bg-[#121214] rounded hover:border-white/10 transition-colors">
+                  <div className="flex items-center gap-4 mb-4">
+                     <div className="w-10 h-10 rounded bg-white/10 flex items-center justify-center font-bold text-white uppercase">
+                       {u.name ? u.name[0] : '?'}
+                     </div>
+                     <div>
+                       <div className="font-bold text-[12px] text-white">{u.name || 'Unnamed'}</div>
+                       <div className="font-mono text-[10px] text-white/40">{u.email || 'No email provided'}</div>
+                     </div>
+                  </div>
+                  {/* Detailed specs could go here */}
+               </div>
+             ))}
+           </div>
+         )}
+      </div>
+    </div>
+  );
+}
+
 function SettingsView() {
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [driveConnected, setDriveConnected] = useState(false);
+  const [isDrivePickerOpen, setIsDrivePickerOpen] = useState(false);
+  const [settings, setSettings] = useState<any>(null);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'system'), (doc) => {
+      if (doc.exists()) {
+        setSettings(doc.data());
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const handleUpdateSetting = async (key: string, value: any) => {
+    try {
+      await setDoc(doc(db, 'settings', 'system'), { [key]: value }, { merge: true });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, 'settings/system');
+    }
+  };
 
   const handleConnectCalendar = async () => {
     try {
-      const { credential } = await signInWithGoogle(['https://www.googleapis.com/auth/calendar.readonly']);
+      const { credential } = await signInWithGoogle(['https://www.googleapis.com/auth/calendar.readonly'], calendarConnected);
       if (credential?.accessToken) {
         localStorage.setItem('google_calendar_token', credential.accessToken);
         setCalendarConnected(true);
@@ -1323,10 +1734,11 @@ function SettingsView() {
 
   const handleConnectDrive = async () => {
     try {
-      const { credential } = await signInWithGoogle(['https://www.googleapis.com/auth/drive.readonly']);
+      const { credential } = await signInWithGoogle(['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/drive.file'], driveConnected);
       if (credential?.accessToken) {
         localStorage.setItem('google_drive_token', credential.accessToken);
         setDriveConnected(true);
+        setIsDrivePickerOpen(true);
       }
     } catch (e) {
       console.error(e);
@@ -1339,59 +1751,91 @@ function SettingsView() {
   }, []);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 p-8 h-full flex flex-col">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-1">Settings</h1>
-        <p className="text-sm text-text-secondary">Manage your account and connected integrations.</p>
+    <div className="max-w-5xl mx-auto p-8 h-full flex flex-col bg-[#0A0A0B] text-white">
+      <div className="flex items-end justify-between shrink-0 mb-10 pb-6 border-b border-white/5">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-bold uppercase tracking-[0.2em] text-white">System Configuration</h1>
+          <p className="text-[10px] text-white/40 uppercase font-mono tracking-widest">Integrations & Parameters</p>
+        </div>
       </div>
 
-      <div className="bg-surface-1 border border-border-subtle rounded-xl overflow-hidden">
-        <div className="p-6 border-b border-border-subtle">
-           <h3 className="font-semibold text-text-primary mb-1">Integrations</h3>
-           <p className="text-sm text-text-secondary">Connect your favorite tools to streamline your workflow.</p>
+      <div className="bg-[#121214] border border-white/5 rounded relative overflow-hidden mb-8">
+        <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500/50"></div>
+        <div className="p-6 border-b border-white/5">
+           <h3 className="font-bold text-[11px] uppercase tracking-widest text-white mb-2">Workspace Integrations</h3>
+           <p className="text-[10px] font-mono text-white/40">Connect external tools to synchronize your media pipeline.</p>
         </div>
         <div className="p-6 space-y-6">
           {/* Google Calendar */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-surface-2 border border-border-subtle flex items-center justify-center">
-                 <Calendar className="w-6 h-6 text-text-secondary" />
+          <div className="flex items-center justify-between p-4 bg-[#0A0A0B] border border-white/5 rounded hover:border-white/10 transition-colors">
+            <div className="flex items-center gap-5">
+              <div className="w-12 h-12 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded flex items-center justify-center">
+                 <Calendar className="w-5 h-5" />
               </div>
-              <div>
-                <h4 className="font-medium text-text-primary">Google Calendar</h4>
-                <p className="text-sm text-text-secondary">Sync your project timelines with Google Calendar.</p>
+              <div className="flex flex-col gap-1">
+                <h4 className="font-bold text-[11px] uppercase tracking-widest text-white">Google Calendar</h4>
+                <p className="text-[10px] font-mono text-white/40">Sync production schedules and event dates.</p>
               </div>
             </div>
             <button 
               onClick={handleConnectCalendar}
-              disabled={calendarConnected}
-              className={cn("px-4 py-2 rounded text-sm font-medium transition-colors border", calendarConnected ? "bg-surface-2 text-status-success border-status-success/30" : "bg-bg-base text-text-primary border-border-subtle hover:bg-surface-2")}
+              className={cn("px-5 py-2.5 rounded text-[9px] uppercase tracking-widest font-bold transition-all border", calendarConnected ? "bg-white/5 text-emerald-400 border-white/5 hover:bg-white/10 hover:border-emerald-500/30" : "bg-white/5 text-white/80 border-white/10 hover:bg-white/10 hover:border-white/20 hover:text-white")}
             >
-              {calendarConnected ? "Connected" : "Connect"}
+              {calendarConnected ? "Change Account" : "Authorize"}
             </button>
           </div>
 
           {/* Google Drive */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-surface-2 border border-border-subtle flex items-center justify-center">
-                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.33333 19.3333L1.66666 8.00001L5.33333 2.00001L12.1667 13.6667L8.33333 19.3333Z" fill="#0066DA"/><path d="M12.1667 19.3333H23.5L15.8333 6.00001L12.1667 13.6667V19.3333Z" fill="#00AA4A"/><path d="M5.33333 2.00001H15.8333L23.5 13.6667H12.1667L5.33333 2.00001Z" fill="#FFC100"/></svg>
+          <div className="flex flex-col p-4 bg-[#0A0A0B] border border-white/5 rounded hover:border-white/10 transition-colors gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-5">
+                <div className="w-12 h-12 bg-white/5 border border-white/10 rounded flex items-center justify-center">
+                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.33333 19.3333L1.66666 8.00001L5.33333 2.00001L12.1667 13.6667L8.33333 19.3333Z" fill="#818CF8"/><path d="M12.1667 19.3333H23.5L15.8333 6.00001L12.1667 13.6667V19.3333Z" fill="#34D399"/><path d="M5.33333 2.00001H15.8333L23.5 13.6667H12.1667L5.33333 2.00001Z" fill="#FBBF24"/></svg>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <h4 className="font-bold text-[11px] uppercase tracking-widest text-white">Google Drive</h4>
+                  <p className="text-[10px] font-mono text-white/40">Link root directories for unified media management.</p>
+                </div>
               </div>
-              <div>
-                <h4 className="font-medium text-text-primary">Google Drive</h4>
-                <p className="text-sm text-text-secondary">Access your footage and assets directly from Drive.</p>
-              </div>
+              <button 
+                onClick={handleConnectDrive}
+                className={cn("px-5 py-2.5 rounded text-[9px] uppercase tracking-widest font-bold transition-all border", driveConnected ? "bg-white/5 text-emerald-400 border-white/5 hover:bg-white/10 hover:border-emerald-500/30" : "bg-white/5 text-white/80 border-white/10 hover:bg-white/10 hover:border-white/20 hover:text-white")}
+              >
+                {driveConnected ? "Change Account" : "Authorize"}
+              </button>
             </div>
-            <button 
-              onClick={handleConnectDrive}
-              disabled={driveConnected}
-              className={cn("px-4 py-2 rounded text-sm font-medium transition-colors border", driveConnected ? "bg-surface-2 text-status-success border-status-success/30" : "bg-bg-base text-text-primary border-border-subtle hover:bg-surface-2")}
-            >
-              {driveConnected ? "Connected" : "Connect"}
-            </button>
+            
+            {driveConnected && (
+              <div className="pt-4 border-t border-white/5 flex items-center justify-between pl-17">
+                 <div className="flex flex-col gap-1">
+                    <span className="text-[9px] uppercase tracking-widest font-bold text-white/30">System Root Folder</span>
+                    <span className="text-xs font-mono text-indigo-400">{settings?.driveRootFolderName || 'Not selected'}</span>
+                 </div>
+                 <button onClick={() => setIsDrivePickerOpen(true)} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded text-[9px] uppercase font-bold text-white/60 hover:text-white transition-colors">
+                    Change Root
+                 </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {isDrivePickerOpen && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+           <div className="w-full max-w-2xl relative">
+             <DriveFolderMapper 
+               accessToken={localStorage.getItem('google_drive_token') || ''} 
+               onSelectRoot={(id, name) => {
+                 handleUpdateSetting('driveRootFolderName', name);
+                 handleUpdateSetting('driveRootFolderId', id);
+                 setIsDrivePickerOpen(false);
+               }}
+               currentRootId={settings?.driveRootFolderId}
+               onClose={() => setIsDrivePickerOpen(false)}
+             />
+           </div>
+        </div>
+      )}
     </div>
   );
 }

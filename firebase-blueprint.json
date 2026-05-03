@@ -17,7 +17,7 @@
         },
         "status": {
           "type": "string",
-          "enum": ["pending", "progress", "review", "delivered", "error"]
+          "enum": ["unconfirmed", "pending", "progress", "review", "delivered", "error"]
         },
         "dueDate": {
           "type": "string"

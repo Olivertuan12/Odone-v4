@@ -18,15 +18,18 @@ service cloud.firestore {
     // Phase 2: Validation Blueprints
     function isValidProject(data) {
       return data.keys().hasAll(['ownerId', 'title', 'client', 'status', 'dueDate', 'progress', 'createdAt', 'updatedAt']) &&
-             data.keys().size() == 8 &&
+             data.keys().hasOnly(['ownerId', 'title', 'client', 'status', 'dueDate', 'progress', 'createdAt', 'updatedAt', 'shooterName', 'editorName', 'driveFolderName']) &&
              data.ownerId == request.auth.uid &&
              data.title is string && data.title.size() <= 200 &&
              data.client is string && data.client.size() <= 200 &&
-             data.status in ['pending', 'progress', 'review', 'delivered', 'error'] &&
+             data.status in ['unconfirmed', 'pending', 'progress', 'review', 'delivered', 'error'] &&
              data.dueDate is string && data.dueDate.size() <= 50 &&
              data.progress is number && data.progress >= 0 && data.progress <= 100 &&
              data.createdAt is timestamp &&
-             data.updatedAt is timestamp;
+             data.updatedAt is timestamp &&
+             (!('shooterName' in data) || (data.shooterName is string && data.shooterName.size() <= 200)) &&
+             (!('editorName' in data) || (data.editorName is string && data.editorName.size() <= 200)) &&
+             (!('driveFolderName' in data) || (data.driveFolderName is string && data.driveFolderName.size() <= 200));
     }
 
     function isValidComment(data) {
@@ -36,6 +39,14 @@ service cloud.firestore {
              data.timestamp is string && data.timestamp.size() <= 50 &&
              data.text is string && data.text.size() <= 1000 &&
              data.createdAt is timestamp;
+    }
+
+    match /settings/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /profiles/{userId} {
+      allow read, write: if isSignedIn();
     }
 
     // Collections
@@ -58,7 +69,7 @@ service cloud.firestore {
                     incoming().createdAt == existing().createdAt &&
                     incoming().updatedAt == request.time &&
                     (
-                      incoming().diff(existing()).affectedKeys().hasOnly(['title', 'client', 'status', 'dueDate', 'progress', 'updatedAt'])
+                      incoming().diff(existing()).affectedKeys().hasOnly(['title', 'client', 'status', 'dueDate', 'progress', 'shooterName', 'editorName', 'driveFolderName', 'updatedAt'])
                     );
 
       allow delete: if isSignedIn() && isValidId(projectId) && existing().ownerId == request.auth.uid;
