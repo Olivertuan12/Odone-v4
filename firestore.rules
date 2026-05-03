@@ -75,11 +75,9 @@ service cloud.firestore {
       allow delete: if isSignedIn() && isValidId(projectId) && existing().ownerId == request.auth.uid;
 
       match /comments/{commentId} {
-        // Read if user is owner of the parent project. We use get() on the parent.
         allow get: if isSignedIn() && isValidId(projectId) && isValidId(commentId) &&
                    get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
-        allow list: if isSignedIn() && isValidId(projectId) &&
-                   get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+        allow list: if isSignedIn() && isValidId(projectId);
 
         // Note: For create, user must own the valid project
         allow create: if isSignedIn() && isValidId(projectId) && isValidId(commentId) &&
@@ -92,6 +90,22 @@ service cloud.firestore {
         
         allow delete: if isSignedIn() && isValidId(projectId) && isValidId(commentId) && 
                       existing().ownerId == request.auth.uid;
+      }
+
+      match /documents/{docId} {
+        allow get: if isSignedIn() && isValidId(projectId) && isValidId(docId) &&
+                   get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+        allow list: if isSignedIn() && isValidId(projectId);
+        allow create, update, delete: if isSignedIn() && isValidId(projectId) && isValidId(docId) &&
+                   get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+      }
+
+      match /videos/{videoId} {
+        allow get: if isSignedIn() && isValidId(projectId) && isValidId(videoId) &&
+                   get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+        allow list: if isSignedIn() && isValidId(projectId);
+        allow create, update, delete: if isSignedIn() && isValidId(projectId) && isValidId(videoId) &&
+                   get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
       }
     }
   }

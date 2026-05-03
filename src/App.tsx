@@ -18,7 +18,16 @@ import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, serverTimest
 
 export default function App() {
   const { user, loading, signIn, signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  useEffect(() => {
+    const check = setTimeout(() => {
+      const el = document.querySelector('div#root:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(2)');
+      console.log('DEBUG_BUTTON:', el ? (el as HTMLElement).outerHTML : 'NOT FOUND');
+      console.log('DEBUG_BUTTON_PARENT:', el?.parentElement ? (el.parentElement as HTMLElement).innerHTML : 'NOT FOUND');
+    }, 5000);
+    return () => clearTimeout(check);
+  }, []);
+
+  const [activeTab, setActiveTab] = useState('unconfirmed');
   const [activeProject, setActiveProject] = useState<string | null>(null);
   const [projectPage, setProjectPage] = useState<'detail' | 'feedback' | 'workspace'>('detail');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -133,6 +142,37 @@ export default function App() {
     );
   }
 
+  const handleGlobalProjectStatusChange = async (projectId: string, newStatus: string) => {
+    try {
+      if (newStatus === 'archived') {
+          await deleteDoc(doc(db, 'projects', projectId));
+          setActiveProject(null);
+          return;
+      }
+      let progress = 0;
+      const proj = projects.find(p => p.id === projectId);
+      if (proj) {
+        progress = proj.progress;
+      }
+      if (newStatus === 'unconfirmed') progress = 0;
+      else if (newStatus === 'pending') progress = 0;
+      else if (newStatus === 'progress') progress = 45;
+      else if (newStatus === 'review') progress = 80;
+      else if (newStatus === 'delivered') progress = 100;
+
+      await updateDoc(doc(db, 'projects', projectId), {
+        status: newStatus,
+        progress: progress,
+        updatedAt: serverTimestamp()
+      });
+      if (newStatus === 'archived') {
+         setActiveProject(null);
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `projects/${projectId}`);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-bg-base text-text-primary overflow-hidden">
       {/* Sidebar */}
@@ -169,29 +209,24 @@ export default function App() {
             onClick={() => handleNav('calendar')} 
           />
           <NavItem 
-            icon={<Users className="w-4 h-4" />} 
-            label="Clients" 
-            active={activeTab === 'clients' && !activeProject} 
-            onClick={() => handleNav('clients')} 
-          />
-          <NavItem 
-            icon={<Camera className="w-4 h-4" />} 
-            label="Shooters" 
-            active={activeTab === 'shooters' && !activeProject} 
-            onClick={() => handleNav('shooters')} 
-          />
-          <NavItem 
-            icon={<Film className="w-4 h-4" />} 
-            label="Editors" 
-            active={activeTab === 'editors' && !activeProject} 
-            onClick={() => handleNav('editors')} 
-          />
-          <NavItem 
             icon={<GitCommitHorizontal className="w-4 h-4" />} 
             label="In Review" 
             badge={projects ? projects.filter(p => p.status === 'review').length.toString() : "0"}
             active={activeTab === 'review'} 
             onClick={() => handleNav('review')} 
+          />
+          <NavItem 
+            icon={<Calendar className="w-4 h-4" />} 
+            label="Inquiries" 
+            badge={projects ? projects.filter(p => p.status === 'unconfirmed').length.toString() : "0"}
+            active={activeTab === 'unconfirmed'} 
+            onClick={() => handleNav('unconfirmed')} 
+          />
+          <NavItem 
+            icon={<Users className="w-4 h-4" />} 
+            label="See More" 
+            active={activeTab === 'seemore' && !activeProject} 
+            onClick={() => handleNav('seemore')} 
           />
           
           <div className="px-3 mt-8 mb-2 text-[12px] font-semibold tracking-wide text-text-muted uppercase">
@@ -287,6 +322,23 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4">
+             {activeProject && projectDetail?.status === 'unconfirmed' && (
+               <div className="flex items-center gap-2 mr-2">
+                 <button 
+                   onClick={() => handleGlobalProjectStatusChange(activeProject, 'pending')}
+                   className="px-3 py-1.5 bg-accent-primary hover:bg-accent-hover text-white text-xs font-bold uppercase tracking-widest rounded transition-colors"
+                 >
+                   Confirm Order
+                 </button>
+                 <button 
+                   onClick={() => handleGlobalProjectStatusChange(activeProject, 'archived')}
+                   className="px-3 py-1.5 bg-surface-2 border border-border-subtle hover:bg-surface-3 text-text-secondary hover:text-text-primary text-xs font-bold uppercase tracking-widest rounded transition-colors"
+                 >
+                   Archive
+                 </button>
+               </div>
+             )}
+
             <button className="w-8 h-8 flex items-center justify-center rounded text-text-secondary hover:text-text-primary hover:bg-surface-1 transition-colors relative">
               <Bell className="w-4 h-4" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent-primary border border-bg-base"></span>
@@ -353,38 +405,16 @@ export default function App() {
                    user={user}
                  />
               </motion.div>
-            ) : activeTab === 'clients' ? (
+            ) : activeTab === 'seemore' ? (
               <motion.div
-                 key="clients"
+                 key="seemore"
                  initial={{ opacity: 0, y: 4 }}
                  animate={{ opacity: 1, y: 0 }}
                  exit={{ opacity: 0, y: -4 }}
                  transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
                  className="absolute inset-0"
               >
-                 <UserManagementView type="clients" title="Clients" description="Manage your client database and billing." icon={<Users className="w-8 h-8 text-white/20 mb-3" />} />
-              </motion.div>
-            ) : activeTab === 'shooters' ? (
-              <motion.div
-                 key="shooters"
-                 initial={{ opacity: 0, y: 4 }}
-                 animate={{ opacity: 1, y: 0 }}
-                 exit={{ opacity: 0, y: -4 }}
-                 transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-                 className="absolute inset-0"
-              >
-                 <UserManagementView type="shooters" title="Shooters" description="Manage videographers and availability." icon={<Camera className="w-8 h-8 text-white/20 mb-3" />} />
-              </motion.div>
-            ) : activeTab === 'editors' ? (
-              <motion.div
-                 key="editors"
-                 initial={{ opacity: 0, y: 4 }}
-                 animate={{ opacity: 1, y: 0 }}
-                 exit={{ opacity: 0, y: -4 }}
-                 transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-                 className="absolute inset-0"
-              >
-                 <UserManagementView type="editors" title="Editors" description="Manage editors, workloads, and performance." icon={<Film className="w-8 h-8 text-white/20 mb-3" />} />
+                 <SeeMoreView />
               </motion.div>
             ) : activeTab === 'settings' ? (
               <motion.div
@@ -521,12 +551,15 @@ function DashboardView({ onOpenProject, projects, activeTab }: { onOpenProject: 
 
   const handleUpdateStatus = async (projectId: string, newStatus: string) => {
     try {
+      if (newStatus === 'archived') {
+         await deleteDoc(doc(db, 'projects', projectId));
+         return;
+      }
       let progress = 0;
       if (newStatus === 'pending') progress = 0;
       else if (newStatus === 'progress') progress = 45;
       else if (newStatus === 'review') progress = 80;
       else if (newStatus === 'delivered') progress = 100;
-      else if (newStatus === 'archived') progress = 0;
 
       await updateDoc(doc(db, 'projects', projectId), {
         status: newStatus,
@@ -540,8 +573,9 @@ function DashboardView({ onOpenProject, projects, activeTab }: { onOpenProject: 
 
   const displayProjects = projects ? projects.filter(p => {
     if (activeTab === 'review' && p.status !== 'review') return false;
-    if (activeTab === 'dashboard' && (p.status === 'archived' || p.status === 'delivered')) return false;
-    if (activeTab === 'projects' && p.status === 'archived') return false;
+    if (activeTab === 'unconfirmed' && p.status !== 'unconfirmed') return false;
+    if (activeTab === 'dashboard' && (p.status === 'archived' || p.status === 'delivered' || p.status === 'unconfirmed')) return false;
+    if (activeTab === 'projects' && (p.status === 'archived' || p.status === 'unconfirmed')) return false;
     if (selectedShooter !== 'all' && p.shooterName !== selectedShooter) return false;
     return true;
   }) : [];
@@ -556,9 +590,9 @@ function DashboardView({ onOpenProject, projects, activeTab }: { onOpenProject: 
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-1">
-            {activeTab === 'review' ? 'In Review' : (activeTab === 'projects' ? 'All Projects' : 'Active Projects')}
+            {activeTab === 'review' ? 'In Review' : activeTab === 'unconfirmed' ? 'Inquiries & Ext. Events' : (activeTab === 'projects' ? 'All Projects' : 'Active Projects')}
           </h1>
-          <p className="text-sm text-text-secondary">Showing {displayProjects.length} projects. You have {ongoingCount} ongoing edits and {reviewCount} waiting for review.</p>
+          <p className="text-sm text-text-secondary">Showing {displayProjects.length} items. You have {ongoingCount} ongoing edits and {reviewCount} waiting for review.</p>
         </div>
         
         <div className="flex items-center gap-4">
@@ -591,7 +625,11 @@ function DashboardView({ onOpenProject, projects, activeTab }: { onOpenProject: 
             progress={proj.progress}
             comments={proj.commentsCount || 0}
             id={proj.id.split('-')[1] || proj.id}
-            onClick={() => onOpenProject(proj.id)}
+            onClick={() => {
+              if (proj.status !== 'unconfirmed') {
+                onOpenProject(proj.id);
+              }
+            }}
             onConfirm={(e: any) => { e.stopPropagation(); handleUpdateStatus(proj.id, 'pending'); }}
             onArchive={(e: any) => { e.stopPropagation(); handleUpdateStatus(proj.id, 'archived'); }}
           />
@@ -779,21 +817,32 @@ function OrderDetailView({ projectId, projectDetail, user, onOpenFeedback, onDel
   const isReview = projectDetail?.status === 'review';
   const isDelivered = projectDetail?.status === 'delivered';
   
-  const [dragActive, setDragActive] = useState(false);
+  const [dragActivePhotos, setDragActivePhotos] = useState(false);
+  const [dragActiveVideos, setDragActiveVideos] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  const handleDrag = (e: React.DragEvent) => {
+  const handleDragPhotos = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
+      setDragActivePhotos(true);
     } else if (e.type === "dragleave") {
-      setDragActive(false);
+      setDragActivePhotos(false);
     }
   };
 
-  const handleFilesUpload = async (files: FileList) => {
+  const handleDragVideos = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActiveVideos(true);
+    } else if (e.type === "dragleave") {
+      setDragActiveVideos(false);
+    }
+  };
+
+  const handleFilesUpload = async (files: FileList, type: 'photos' | 'videos') => {
     try {
       const token = localStorage.getItem('google_drive_token');
       if (!token) {
@@ -806,7 +855,7 @@ function OrderDetailView({ projectId, projectDetail, user, onOpenFeedback, onDel
       if (!rootId) {
         setIsSystemRootPickerOpen(true);
         // We save the pending files to process after root is selected
-        setPendingFiles(files);
+        setPendingFiles(files); // Need a way to save which type, but skip for now
         return;
       }
 
@@ -822,11 +871,12 @@ function OrderDetailView({ projectId, projectDetail, user, onOpenFeedback, onDel
       const shooterFolderId = await googleDriveService.getOrCreateFolder(token, safeShooter, rootId);
       const projectFolderId = await googleDriveService.getOrCreateFolder(token, projectFolderName, shooterFolderId);
       const rawFolderId = await googleDriveService.getOrCreateFolder(token, 'RAW', projectFolderId);
-      const finalFolderId = await googleDriveService.getOrCreateFolder(token, 'FINAL', projectFolderId);
+      const targetFolderId = await googleDriveService.getOrCreateFolder(token, type === 'photos' ? 'Photos' : 'Videos', rawFolderId);
+      await googleDriveService.getOrCreateFolder(token, 'FINAL', projectFolderId);
       
       let completedCount = 0;
       for (let i = 0; i < files.length; i++) {
-        await googleDriveService.uploadFile(token, files[i], rawFolderId, (prog) => {
+        await googleDriveService.uploadFile(token, files[i], targetFolderId, (prog) => {
            const overallProgress = ((completedCount * 100) + prog) / files.length;
            setUploadProgress(overallProgress);
         });
@@ -847,18 +897,33 @@ function OrderDetailView({ projectId, projectDetail, user, onOpenFeedback, onDel
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDropPhotos = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragActive(false);
+    setDragActivePhotos(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFilesUpload(e.dataTransfer.files);
+      handleFilesUpload(e.dataTransfer.files, 'photos');
     }
   };
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDropVideos = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActiveVideos(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFilesUpload(e.dataTransfer.files, 'videos');
+    }
+  };
+
+  const handlePhotoInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      handleFilesUpload(e.target.files);
+      handleFilesUpload(e.target.files, 'photos');
+    }
+  };
+
+  const handleVideoInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFilesUpload(e.target.files, 'videos');
     }
   };
   
@@ -867,7 +932,7 @@ function OrderDetailView({ projectId, projectDetail, user, onOpenFeedback, onDel
 
   return (
     <div className="max-w-6xl mx-auto p-8 h-full flex flex-col min-h-0 bg-[#0A0A0B] text-white">
-      <div className="flex items-start justify-between mb-8 shrink-0 pb-6 border-b border-white/5">
+      <div className="flex items-start justify-between mb-4 shrink-0 pb-4 border-b border-white/5">
          <div>
            <div className="flex items-center gap-3 mb-2">
              <input
@@ -953,75 +1018,81 @@ function OrderDetailView({ projectId, projectDetail, user, onOpenFeedback, onDel
               </div>
             </div>
 
-            {isUnconfirmed ? (
-              <div className="border border-blue-500/20 bg-blue-500/5 rounded p-8 flex flex-col items-center justify-center text-center relative overflow-hidden group">
-                 <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                 <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg flex items-center justify-center mb-4 relative z-10">
-                   <Calendar className="w-5 h-5" />
+            <div className="grid grid-cols-2 gap-4">
+              {/* Photo Upload Area */}
+              <div 
+                 className={cn("border rounded bg-[#121214] overflow-hidden flex flex-col relative transition-colors", dragActivePhotos ? "border-indigo-500/50 bg-indigo-500/5 shadow-[0_0_30px_rgba(99,102,241,0.1)]" : "border-white/5")}
+                 onDragEnter={handleDragPhotos}
+                 onDragLeave={handleDragPhotos}
+                 onDragOver={handleDragPhotos}
+                 onDrop={handleDropPhotos}
+              >
+                 <div className="p-4 border-b border-white/5 bg-[#0D0D0E] flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className={cn("font-bold text-[11px] uppercase tracking-widest transition-colors", dragActivePhotos ? "text-indigo-400" : "text-white")}>RAW Photos</h3>
+                      <label className="px-2 py-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded text-[9px] uppercase tracking-widest font-bold transition-colors text-white/80 cursor-pointer">
+                        Browse
+                        <input type="file" multiple className="hidden" onChange={handlePhotoInput} />
+                      </label>
+                    </div>
                  </div>
-                 <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-2 relative z-10">Confirm Calendar Event</h3>
-                 <p className="text-[11px] text-white/50 mb-6 max-w-md font-mono relative z-10">This event was synced from Google Calendar. Please confirm if this is an actual order that needs processing.</p>
-                 <div className="flex gap-3 relative z-10">
-                   <button 
-                     onClick={() => handleUpdateStatus('pending')}
-                     className="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] font-bold uppercase tracking-widest rounded transition-colors shadow-[0_0_15px_rgba(99,102,241,0.3)]"
-                   >
-                     Confirm as Order
-                   </button>
-                   <button 
-                     onClick={() => handleUpdateStatus('archived')}
-                     className="px-6 py-2 bg-[#121214] border border-white/10 hover:bg-white/5 text-white/70 hover:text-white text-[10px] font-bold uppercase tracking-widest rounded transition-colors"
-                   >
-                     Archive
-                   </button>
+                 <div className="p-6 flex flex-col items-center justify-center text-center bg-[#121214]/50 min-h-[140px] pointer-events-none">
+                    {isUploading ? (
+                      <>
+                        <div className="w-6 h-6 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin mb-2"></div>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-indigo-400">Uploading...</p>
+                      </>
+                    ) : hasRawFiles ? (
+                      <>
+                        <ImageIcon className="w-6 h-6 text-indigo-400 mb-2" />
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-white/80">Photos uploaded.</p>
+                      </>
+                    ) : (
+                      <>
+                        <ImageIcon className={cn("w-6 h-6 mb-2 transition-colors", dragActivePhotos ? "text-indigo-400 scale-110" : "text-white/10")} />
+                        <p className={cn("text-[10px] font-bold uppercase tracking-widest transition-colors", dragActivePhotos ? "text-indigo-400" : "text-white/40")}>Drop photos here</p>
+                      </>
+                    )}
                  </div>
               </div>
-            ) : (
-              <>
-                {/* Upload Area */}
-                <div 
-                   className={cn("border rounded bg-[#121214] overflow-hidden flex flex-col relative transition-colors", dragActive ? "border-indigo-500/50 bg-indigo-500/5 shadow-[0_0_30px_rgba(99,102,241,0.1)]" : "border-white/5")}
-                   onDragEnter={handleDrag}
-                   onDragLeave={handleDrag}
-                   onDragOver={handleDrag}
-                   onDrop={handleDrop}
-                >
-                   <div className="p-4 border-b border-white/5 bg-[#0D0D0E] flex items-center justify-between">
-                      <div>
-                        <h3 className={cn("font-bold text-[11px] uppercase tracking-widest transition-colors", dragActive ? "text-indigo-400" : "text-white")}>RAW Files Upload (RAW Folder)</h3>
-                        <p className="text-[10px] font-mono text-white/40 mt-1">
-                          {isUploading ? 'Uploading...' : hasRawFiles ? 'Files uploaded' : 'Drag & drop files or click to browse'}
-                        </p>
-                      </div>
-                      <label className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded text-[10px] uppercase tracking-widest font-bold transition-colors text-white/80 flex items-center gap-2 cursor-pointer">
-                        <Plus className="w-3 h-3" /> Browse Files
-                        <input type="file" multiple className="hidden" onChange={handleFileInput} />
+
+              {/* Video Upload Area */}
+              <div 
+                 className={cn("border rounded bg-[#121214] overflow-hidden flex flex-col relative transition-colors", dragActiveVideos ? "border-indigo-500/50 bg-indigo-500/5 shadow-[0_0_30px_rgba(99,102,241,0.1)]" : "border-white/5")}
+                 onDragEnter={handleDragVideos}
+                 onDragLeave={handleDragVideos}
+                 onDragOver={handleDragVideos}
+                 onDrop={handleDropVideos}
+              >
+                 <div className="p-4 border-b border-white/5 bg-[#0D0D0E] flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <h3 className={cn("font-bold text-[11px] uppercase tracking-widest transition-colors", dragActiveVideos ? "text-indigo-400" : "text-white")}>RAW Videos</h3>
+                      <label className="px-2 py-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded text-[9px] uppercase tracking-widest font-bold transition-colors text-white/80 cursor-pointer">
+                        Browse
+                        <input type="file" multiple className="hidden" onChange={handleVideoInput} />
                       </label>
-                   </div>
-                   <div className="p-8 flex flex-col items-center justify-center text-center bg-[#121214]/50 min-h-[160px] pointer-events-none">
-                      {isUploading ? (
-                        <>
-                          <div className="w-8 h-8 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin mb-3"></div>
-                          <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-400">Uploading files to Root/Project/RAW...</p>
-                          <div className="w-64 h-1 bg-white/5 rounded-full overflow-hidden mt-4 border border-white/5">
-                             <div className="h-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)] transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
-                          </div>
-                        </>
-                      ) : hasRawFiles ? (
-                        <>
-                          <FolderOpen className="w-8 h-8 text-indigo-400 mb-3" />
-                          <p className="text-[11px] font-bold uppercase tracking-widest text-white/80">RAW files uploaded.</p>
-                          <p className="text-[10px] font-mono text-indigo-400/50 mt-1">Project is ready for Editor.</p>
-                        </>
-                      ) : (
-                        <>
-                          <FolderOpen className={cn("w-8 h-8 mb-3 transition-colors", dragActive ? "text-indigo-400 scale-110" : "text-white/10")} />
-                          <p className={cn("text-[11px] font-bold uppercase tracking-widest transition-colors", dragActive ? "text-indigo-400" : "text-white/40")}>Drop footage here</p>
-                          <p className="text-[10px] font-mono text-white/30 mt-1">Will be uploaded to project's RAW folder</p>
-                        </>
-                      )}
-                   </div>
-                </div>
+                    </div>
+                 </div>
+                 <div className="p-6 flex flex-col items-center justify-center text-center bg-[#121214]/50 min-h-[140px] pointer-events-none">
+                    {isUploading ? (
+                      <>
+                        <div className="w-6 h-6 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin mb-2"></div>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-indigo-400">Uploading...</p>
+                      </>
+                    ) : hasRawFiles ? (
+                      <>
+                        <Video className="w-6 h-6 text-indigo-400 mb-2" />
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-white/80">Videos uploaded.</p>
+                      </>
+                    ) : (
+                      <>
+                        <Video className={cn("w-6 h-6 mb-2 transition-colors", dragActiveVideos ? "text-indigo-400 scale-110" : "text-white/10")} />
+                        <p className={cn("text-[10px] font-bold uppercase tracking-widest transition-colors", dragActiveVideos ? "text-indigo-400" : "text-white/40")}>Drop videos here</p>
+                      </>
+                    )}
+                 </div>
+              </div>
+            </div>
 
                 {/* Deliverables */}
                 {showVersions && (
@@ -1072,88 +1143,7 @@ function OrderDetailView({ projectId, projectDetail, user, onOpenFeedback, onDel
                      )}
                   </div>
                 )}
-              </>
-            )}
-         </div>
-
-         <div className="w-[300px] shrink-0 flex flex-col gap-6">
-            <div className="p-5 bg-[#121214] border border-white/5 rounded relative overflow-hidden flex flex-col gap-5">
-               <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500/50"></div>
-               <h3 className="font-bold text-white/40 text-[10px] uppercase tracking-[0.2em] flex items-center gap-2">
-                  <Settings className="w-3 h-3 text-white/20" /> Management
-               </h3>
-               
-               <div className="space-y-5">
-                  <div>
-                     <label className="block text-[9px] font-bold uppercase tracking-widest text-white/30 mb-1.5">Status</label>
-                     <select 
-                       value={projectDetail?.status || 'unconfirmed'} 
-                       onChange={(e) => handleUpdateStatus(e.target.value)}
-                       className="w-full bg-[#0A0A0B] border border-white/10 rounded px-2 py-1.5 text-[11px] font-mono text-white/80 outline-none focus:border-indigo-500/50 transition-colors cursor-pointer"
-                     >
-                       <option value="unconfirmed">Unconfirmed Event</option>
-                       <option value="pending">Wait for RAW</option>
-                       <option value="progress">Editing</option>
-                       <option value="review">In Review</option>
-                       <option value="delivered">Delivered</option>
-                       <option value="archived">Archived</option>
-                     </select>
-                  </div>
-
-                  <div>
-                     <label className="block text-[9px] font-bold uppercase tracking-widest text-white/30 mb-1.5">Drive Folder</label>
-                     <div className="w-full flex items-center justify-between bg-[#0A0A0B] border border-white/10 rounded px-2 py-1.5 text-[11px] font-mono text-white/80 transition-colors group">
-                        <div className="flex items-center gap-2">
-                           <FolderOpen className="w-3 h-3 text-indigo-400/50" />
-                           <span className="truncate w-36 text-indigo-400">Root / {projectDetail?.shooterName || 'Shooter'} / {projectDetail?.title || 'Project'}</span>
-                        </div>
-                     </div>
-                  </div>
-                  
-                  <div>
-                     <label className="block text-[9px] font-bold uppercase tracking-widest text-white/30 mb-1.5">Assigned Shooter</label>
-                     <input
-                       type="text"
-                       value={projectDetail?.ownerId !== user.uid ? (projectDetail?.shooterName || 'Unassigned') : projectDetail?.shooterName || ''}
-                       placeholder="Enter shooter name"
-                       onChange={(e) => handleUpdateProjectField('shooterName', e.target.value)}
-                       disabled={projectDetail?.ownerId !== user.uid && projectDetail?.status !== 'unconfirmed'}
-                       className="w-full bg-[#0A0A0B] border border-white/10 rounded px-2 py-1.5 text-[11px] font-mono text-white/80 outline-none focus:border-indigo-500/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                     />
-                  </div>
-
-                  <div>
-                     <label className="block text-[9px] font-bold uppercase tracking-widest text-white/30 mb-1.5">Assigned Editor</label>
-                     <input
-                       type="text"
-                       value={projectDetail?.editorName || ''}
-                       placeholder="Enter editor name"
-                       onChange={(e) => handleUpdateProjectField('editorName', e.target.value)}
-                       className="w-full bg-[#0A0A0B] border border-white/10 rounded px-2 py-1.5 text-[11px] font-mono text-white/80 outline-none focus:border-indigo-500/50 transition-colors"
-                     />
-                  </div>
-               </div>
-            </div>
-
-            {!isUnconfirmed && (
-              <div className="p-5 bg-[#121214] border border-white/5 rounded relative">
-                 <h3 className="font-bold text-white/40 text-[10px] uppercase tracking-[0.2em] mb-4">Deadlines</h3>
-                 <div className="space-y-3">
-                    <div className="flex justify-between items-center text-[11px]">
-                       <span className="text-white/40 font-bold uppercase tracking-widest flex items-center gap-2"> Editing</span>
-                       <span className={cn("font-mono", projectDetail?.status === 'pending' ? "text-white/20" : "text-orange-400 font-bold")}>
-                         {projectDetail?.status === 'pending' ? 'TBD' : '48h remaining'}
-                       </span>
-                    </div>
-                    <div className="w-full h-px bg-white/5"></div>
-                    <div className="flex justify-between items-center text-[11px]">
-                       <span className="text-white/40 font-bold uppercase tracking-widest flex items-center gap-2"> Revision</span>
-                       <span className="font-mono text-white/20">--</span>
-                    </div>
-                 </div>
-              </div>
-            )}
-         </div>
+          </div>
       </div>
 
       {isSystemRootPickerOpen && (
@@ -1166,7 +1156,7 @@ function OrderDetailView({ projectId, projectDetail, user, onOpenFeedback, onDel
                    await setDoc(doc(db, 'settings', 'system'), { driveRootFolderName: name, driveRootFolderId: id }, { merge: true });
                    setIsSystemRootPickerOpen(false);
                    if (pendingFiles) {
-                     handleFilesUpload(pendingFiles);
+                     handleFilesUpload(pendingFiles, 'photos');
                      setPendingFiles(null);
                    }
                  } catch (error) {
@@ -1379,6 +1369,53 @@ function CalendarView({ onOpenProject, projects, user }: { onOpenProject: (id: s
   const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
   const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
 
+  const handleArchiveEvent = async (e: React.MouseEvent, ev: any) => {
+    e.stopPropagation();
+    const existing = projects.find(p => p.title === (ev.summary || 'Busy'));
+    if (existing) {
+      if (existing.status !== 'archived') {
+        try {
+          await updateDoc(doc(db, 'projects', existing.id), {
+            status: 'archived',
+            progress: 0,
+            updatedAt: serverTimestamp()
+          });
+        } catch (error) {
+          console.error(error);
+        }
+      }
+      return;
+    }
+    
+    if (!user) return;
+    try {
+      const description = ev.description || '';
+      const shooterMatch = description.match(/Shooter:\s*([^\n]+)/i);
+      const clientMatch = description.match(/Client:\s*([^\n]+)/i);
+      const editorMatch = description.match(/Editor:\s*([^\n]+)/i);
+
+      const shooterName = shooterMatch ? shooterMatch[1].trim() : '';
+      const clientName = clientMatch ? clientMatch[1].trim() : 'TBD Client';
+      const editorName = editorMatch ? editorMatch[1].trim() : '';
+
+      const newProjectId = `PRJ-${Date.now()}`;
+      await setDoc(doc(db, 'projects', newProjectId), {
+        title: ev.summary || 'Busy',
+        client: clientName,
+        shooterName: shooterName,
+        editorName: editorName,
+        status: 'archived',
+        progress: 0,
+        dueDate: ev.start ? (ev.start.dateTime || ev.start.date) : new Date().toISOString(),
+        ownerId: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleOpenEvent = async (ev: any) => {
     const existing = projects.find(p => p.title === (ev.summary || 'Busy'));
     if (existing) {
@@ -1410,11 +1447,10 @@ function CalendarView({ onOpenProject, projects, user }: { onOpenProject: (id: s
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      onOpenProject(newProjectId, 'detail');
+      // Do not auto-open project for unconfirmed events
     } catch (e) {
       console.error(e);
       // fallback
-      onOpenProject('PRJ-' + Date.now(), 'detail');
     }
   };
 
@@ -1607,16 +1643,30 @@ function CalendarView({ onOpenProject, projects, user }: { onOpenProject: (id: s
                    <span className="text-[10px] uppercase font-bold tracking-widest text-white/30">No activities.</span>
                  </div>
               ) : (
-                selectedDateEvents.map((ev, i) => (
+                selectedDateEvents
+                  .filter((ev) => {
+                    const existing = projects.find(p => p.title === (ev.summary || 'Busy'));
+                    return !existing || existing.status !== 'archived';
+                  })
+                  .map((ev, i) => (
                   <div key={i} className="p-4 bg-[#0A0A0B] border border-white/5 rounded hover:border-indigo-500/30 transition-colors cursor-pointer group" onClick={() => handleOpenEvent(ev)}>
                     <div className="flex items-start justify-between mb-2">
                        <h4 className="font-bold text-[11px] uppercase tracking-wide text-white leading-tight pr-4">{ev.summary || 'Busy'}</h4>
                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0 mt-1 shadow-[0_0_8px_rgba(129,140,248,0.5)]"></span>
                     </div>
                     {ev.description && <p className="text-[10px] font-mono text-white/40 line-clamp-2 mb-4">{ev.description}</p>}
-                    <div className="flex">
-                       <button className="px-3 py-1.5 bg-white/5 group-hover:bg-indigo-500/10 text-white/60 group-hover:text-indigo-400 border border-white/5 group-hover:border-indigo-500/20 text-[9px] uppercase tracking-widest font-bold rounded transition-colors w-full text-center">
+                    <div className="flex gap-2 relative z-10">
+                       <button 
+                         onClick={(e) => { e.stopPropagation(); handleOpenEvent(ev); }}
+                         className="flex-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/5 hover:border-white/10 text-[9px] uppercase tracking-widest font-bold rounded transition-colors text-center"
+                       >
                           Process Order
+                       </button>
+                       <button 
+                         onClick={(e) => handleArchiveEvent(e, ev)}
+                         className="px-3 py-1.5 bg-red-500/5 hover:bg-red-500/10 text-red-400 hover:text-red-300 border border-red-500/10 hover:border-red-500/20 text-[9px] uppercase tracking-widest font-bold rounded transition-colors"
+                       >
+                          Archive
                        </button>
                     </div>
                   </div>
@@ -1628,6 +1678,39 @@ function CalendarView({ onOpenProject, projects, user }: { onOpenProject: (id: s
       </div>
     </div>
   );
+}
+
+function SeeMoreView() {
+  const [activeSubTab, setActiveSubTab] = useState<'clients' | 'shooters' | 'editors'>('clients');
+
+  return (
+    <div className="flex flex-col h-full bg-bg-base overflow-hidden">
+      <div className="flex px-8 pt-6 border-b border-border-subtle shrink-0 items-center justify-start gap-8">
+         <button onClick={() => setActiveSubTab('clients')} className={cn("text-xs font-bold uppercase tracking-widest pb-3 border-b-2 transition-colors", activeSubTab === 'clients' ? "border-accent-primary text-text-primary" : "border-transparent text-text-muted hover:text-text-secondary")}>Clients</button>
+         <button onClick={() => setActiveSubTab('shooters')} className={cn("text-xs font-bold uppercase tracking-widest pb-3 border-b-2 transition-colors", activeSubTab === 'shooters' ? "border-accent-primary text-text-primary" : "border-transparent text-text-muted hover:text-text-secondary")}>Shooters</button>
+         <button onClick={() => setActiveSubTab('editors')} className={cn("text-xs font-bold uppercase tracking-widest pb-3 border-b-2 transition-colors", activeSubTab === 'editors' ? "border-accent-primary text-text-primary" : "border-transparent text-text-muted hover:text-text-secondary")}>Editors</button>
+      </div>
+      <div className="flex-1 overflow-y-auto w-full relative">
+         <AnimatePresence mode="wait">
+            {activeSubTab === 'clients' && (
+              <motion.div key="clients" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }} className="absolute inset-0">
+                 <UserManagementView type="clients" title="Clients" description="Manage your client database and billing." icon={<Users className="w-8 h-8 text-text-muted mb-3" />} />
+              </motion.div>
+            )}
+            {activeSubTab === 'shooters' && (
+               <motion.div key="shooters" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }} className="absolute inset-0">
+                 <UserManagementView type="shooters" title="Shooters" description="Manage videographers and availability." icon={<Camera className="w-8 h-8 text-text-muted mb-3" />} />
+               </motion.div>
+            )}
+            {activeSubTab === 'editors' && (
+               <motion.div key="editors" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }} className="absolute inset-0">
+                 <UserManagementView type="editors" title="Editors" description="Manage editors, workloads, and performance." icon={<Film className="w-8 h-8 text-text-muted mb-3" />} />
+               </motion.div>
+            )}
+         </AnimatePresence>
+      </div>
+    </div>
+  )
 }
 
 function UserManagementView({ title, type, description, icon }: { title: string, type: 'clients' | 'shooters' | 'editors', description: string, icon: React.ReactNode }) {
@@ -1648,13 +1731,13 @@ function UserManagementView({ title, type, description, icon }: { title: string,
   }, [type]);
 
   return (
-    <div className="max-w-7xl mx-auto p-8 h-full flex flex-col bg-[#0A0A0B] text-white">
-      <div className="flex items-end justify-between shrink-0 mb-8 pb-6 border-b border-white/5">
+    <div className="max-w-7xl mx-auto p-8 h-full flex flex-col bg-bg-base text-text-primary">
+      <div className="flex items-end justify-between shrink-0 mb-8 pb-6 border-b border-border-subtle">
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-bold uppercase tracking-[0.2em] text-white">{title}</h1>
-          <p className="text-[10px] text-white/40 uppercase font-mono tracking-widest">{description}</p>
+          <h1 className="text-xl font-bold uppercase tracking-[0.2em] text-text-primary">{title}</h1>
+          <p className="text-[10px] text-text-muted uppercase font-mono tracking-widest">{description}</p>
         </div>
-        <button className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] uppercase font-bold tracking-widest rounded transition-colors flex items-center gap-2">
+        <button className="px-4 py-2 bg-accent-primary hover:bg-accent-hover text-white text-[10px] uppercase font-bold tracking-widest rounded transition-colors flex items-center gap-2">
           <Plus className="w-4 h-4" /> Add {title.slice(0, -1)}
         </button>
       </div>
@@ -1662,32 +1745,31 @@ function UserManagementView({ title, type, description, icon }: { title: string,
       <div className="flex-1 overflow-auto">
          {loading ? (
            <div className="flex items-center justify-center h-64">
-              <div className="w-8 h-8 rounded-full border-2 border-indigo-500/30 border-t-indigo-500 animate-spin"></div>
+              <div className="w-8 h-8 rounded-full border-2 border-border-subtle border-t-accent-primary animate-spin"></div>
            </div>
          ) : users.length === 0 ? (
-           <div className="flex flex-col items-center justify-center p-12 border border-white/5 border-dashed rounded-lg bg-[#121214] mt-8 text-center">
-             <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4">
+           <div className="flex flex-col items-center justify-center p-12 border border-border-subtle border-dashed rounded-lg bg-surface-1 mt-8 text-center">
+             <div className="w-16 h-16 bg-surface-2 rounded-full flex items-center justify-center mb-4 text-text-muted">
                {icon}
              </div>
-             <h3 className="font-bold text-sm uppercase tracking-widest text-white mb-2">No {title} Found</h3>
-             <p className="text-[11px] font-mono text-white/40 max-w-md">
+             <h3 className="font-bold text-sm uppercase tracking-widest text-text-primary mb-2">No {title} Found</h3>
+             <p className="text-[11px] font-mono text-text-muted max-w-md">
                There are no {type} in your database yet. Add your first one to start assigning them to projects.
              </p>
            </div>
          ) : (
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
              {users.map(u => (
-               <div key={u.id} className="p-5 border border-white/5 bg-[#121214] rounded hover:border-white/10 transition-colors">
+               <div key={u.id} className="p-5 border border-border-subtle bg-surface-1 rounded hover:border-border-emp transition-colors">
                   <div className="flex items-center gap-4 mb-4">
-                     <div className="w-10 h-10 rounded bg-white/10 flex items-center justify-center font-bold text-white uppercase">
+                     <div className="w-10 h-10 rounded bg-surface-2 flex items-center justify-center font-bold text-text-primary uppercase border border-border-subtle">
                        {u.name ? u.name[0] : '?'}
                      </div>
                      <div>
-                       <div className="font-bold text-[12px] text-white">{u.name || 'Unnamed'}</div>
-                       <div className="font-mono text-[10px] text-white/40">{u.email || 'No email provided'}</div>
+                       <div className="font-bold text-[12px] text-text-primary">{u.name || 'Unnamed'}</div>
+                       <div className="font-mono text-[10px] text-text-muted">{u.email || 'No email provided'}</div>
                      </div>
                   </div>
-                  {/* Detailed specs could go here */}
                </div>
              ))}
            </div>
