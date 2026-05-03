@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "project": {
+      "title": "Project",
+      "description": "A media production project.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "User ID of the project owner."
+        },
+        "title": {
+          "type": "string"
+        },
+        "client": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "progress", "review", "delivered", "error"]
+        },
+        "dueDate": {
+          "type": "string"
+        },
+        "progress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "createdAt": {
+          "type": "timestamp"
+        },
+        "updatedAt": {
+          "type": "timestamp"
+        }
+      },
+      "required": ["ownerId", "title", "client", "status", "dueDate", "progress", "createdAt", "updatedAt"]
+    },
+    "comment": {
+      "title": "Comment",
+      "description": "A comment on a project's footage.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "timestamp"
+        }
+      },
+      "required": ["ownerId", "timestamp", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/projects/{projectId}": {
+      "schema": {
+        "$ref": "#/entities/project"
+      },
+      "description": "Stores all projects."
+    },
+    "/projects/{projectId}/comments/{commentId}": {
+      "schema": {
+        "$ref": "#/entities/comment"
+      },
+      "description": "Stores comments for a specific project."
+    }
+  }
+}
